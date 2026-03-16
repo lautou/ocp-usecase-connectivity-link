@@ -4,6 +4,7 @@ kind: Kustomization
 resources:
   # Cluster-scoped resources
   - cluster-gatewayclass-istio.yaml
+  - cluster-crb-istiod-clusterrole-openshift-gateway-openshift-ingress-openshift-gitops-argocd-application-controller.yaml
 
   # Namespaces
   - cluster-ns-echo-api.yaml
