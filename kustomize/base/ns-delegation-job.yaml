@@ -6,8 +6,6 @@ metadata:
   name: globex-ns-delegation
   namespace: openshift-gitops
 spec:
-  backoffLimit: 10
-  ttlSecondsAfterFinished: 86400  # Cleanup after 24 hours
   template:
     metadata:
       name: globex-ns-delegation
