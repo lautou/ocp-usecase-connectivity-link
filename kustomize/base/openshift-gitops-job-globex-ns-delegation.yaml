@@ -26,11 +26,22 @@ spec:
               echo ""
               echo "[1/6] Getting cluster domain..."
               BASE_DOMAIN=$(oc get dns cluster -o jsonpath='{.spec.baseDomain}')
+
+              # Extract cluster name (first segment of BASE_DOMAIN)
+              # e.g., myocp.sandbox4993.opentlc.com -> myocp
+              CLUSTER_NAME=$(echo "${BASE_DOMAIN}" | cut -d'.' -f1)
+
               SUBDOMAIN_NAME="globex"
               FULL_DOMAIN="${SUBDOMAIN_NAME}.${BASE_DOMAIN}"
 
+              # RecordSet name must be relative (not FQDN) to avoid domain duplication
+              # e.g., globex.myocp (not globex.myocp.sandbox4993.opentlc.com)
+              RECORDSET_NAME="${SUBDOMAIN_NAME}.${CLUSTER_NAME}"
+
               echo "✓ Cluster base domain: ${BASE_DOMAIN}"
+              echo "✓ Cluster name: ${CLUSTER_NAME}"
               echo "✓ Full subdomain: ${FULL_DOMAIN}"
+              echo "✓ RecordSet name (relative): ${RECORDSET_NAME}"
 
               # Create HostedZone
               echo ""
@@ -140,7 +151,7 @@ spec:
                   app.kubernetes.io/part-of: connectivity-link
                   app.kubernetes.io/managed-by: argocd
               spec:
-                name: ${FULL_DOMAIN}
+                name: ${RECORDSET_NAME}
                 recordType: NS
                 ttl: 300
                 hostedZoneID: ${PARENT_ZONE_ID}
