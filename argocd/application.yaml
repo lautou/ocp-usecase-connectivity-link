@@ -9,7 +9,7 @@ metadata:
 spec:
   project: default
   source:
-    repoURL: git@github.com:lautou/ocp-usecase-connectivity-link.git
+    repoURL: https://github.com/lautou/ocp-usecase-connectivity-link.git
     targetRevision: main
     path: kustomize/overlays/default
   destination:
