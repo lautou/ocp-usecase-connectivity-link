@@ -130,15 +130,15 @@ All changes are declarative and managed via Git:
 
 The system is **fully dynamic** and extracts all necessary information from the cluster:
 
-| Value | Source |
-|-------|--------|
-| Cluster domain | `dns.config.openshift.io/cluster` |
-| AWS region | `infrastructure.config.openshift.io/cluster` |
-| AWS credentials | `kube-system/aws-creds` |
-| Parent zone ID | `dns.config.openshift.io/cluster` |
-| Nameservers | HostedZone status (after creation) |
+| Value | Source | Example |
+|-------|--------|---------|
+| Cluster base domain | `dns.config.openshift.io/cluster` | myocp.sandbox4993.opentlc.com |
+| Parent zone ID | `dns.config.openshift.io/cluster` | Z044356419CQ6A6BXXDV3 |
+| Nameservers | HostedZone status (after creation) | ns-451.awsdns-56.com, ... |
 
 **No hardcoded values** → Works on any OpenShift cluster on AWS!
+
+**Note**: The parent zone ID must point to the root public zone (e.g., sandbox4993.opentlc.com), following the same pattern as connectivity-link-ansible.
 
 ## Repository Structure
 
