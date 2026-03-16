@@ -2,11 +2,10 @@ apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 
 resources:
+  - cluster-ns-ingress-gateway.yaml
   - ack-system-hostedzone-globex.yaml
   - openshift-gitops-job-globex-ns-delegation.yaml
 
 commonLabels:
-  app.kubernetes.io/name: globex-route53
-  app.kubernetes.io/component: dns
   app.kubernetes.io/part-of: connectivity-link
   app.kubernetes.io/managed-by: argocd

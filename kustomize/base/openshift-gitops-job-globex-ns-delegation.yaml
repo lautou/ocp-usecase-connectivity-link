@@ -106,8 +106,6 @@ spec:
                 name: globex-ns-delegation
                 namespace: ack-system
                 labels:
-                  app.kubernetes.io/name: globex-route53
-                  app.kubernetes.io/component: dns-delegation
                   app.kubernetes.io/part-of: connectivity-link
                   app.kubernetes.io/managed-by: argocd
               spec:
