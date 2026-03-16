@@ -1,0 +1,18 @@
+apiVersion: route53.services.k8s.aws/v1alpha1
+kind: HostedZone
+metadata:
+  name: globex
+  namespace: ack-system
+  annotations:
+    argocd.argoproj.io/sync-options: SkipDryRunOnMissingResource=true
+spec:
+  name: globex.myocp.sandbox4993.opentlc.com
+  hostedZoneConfig:
+    comment: "Globex subdomain for Red Hat Connectivity Link"
+  tags:
+    - key: managed-by
+      value: ack-route53
+    - key: purpose
+      value: connectivity-link
+    - key: environment
+      value: openshift

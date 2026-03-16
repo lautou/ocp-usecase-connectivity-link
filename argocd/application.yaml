@@ -1,0 +1,30 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: usecase-connectivity-link
+  namespace: openshift-gitops
+  labels:
+    app.kubernetes.io/name: usecase-connectivity-link
+    app.kubernetes.io/part-of: connectivity-link
+spec:
+  project: default
+  source:
+    repoURL: git@github.com:lautou/ocp-usecase-connectivity-link.git
+    targetRevision: main
+    path: kustomize/overlays/default
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: ack-system
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+      - RespectIgnoreDifferences=true
+    retry:
+      limit: 5
+      backoff:
+        duration: 5s
+        factor: 2
+        maxDuration: 3m
