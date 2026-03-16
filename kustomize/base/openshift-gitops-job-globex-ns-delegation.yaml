@@ -56,7 +56,7 @@ spec:
                   argocd.argoproj.io/sync-options: SkipDryRunOnMissingResource=true
                 labels:
                   app.kubernetes.io/part-of: connectivity-link
-                  app.kubernetes.io/managed-by: argocd
+                  argocd.argoproj.io/managed-by: openshift-gitops
               spec:
                 name: ${FULL_DOMAIN}
                 hostedZoneConfig:
@@ -149,7 +149,7 @@ spec:
                 namespace: ack-system
                 labels:
                   app.kubernetes.io/part-of: connectivity-link
-                  app.kubernetes.io/managed-by: argocd
+                  argocd.argoproj.io/managed-by: openshift-gitops
               spec:
                 name: ${RECORDSET_NAME}
                 recordType: NS

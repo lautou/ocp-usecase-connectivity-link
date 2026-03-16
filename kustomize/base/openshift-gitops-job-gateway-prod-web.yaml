@@ -45,7 +45,7 @@ spec:
                 labels:
                   istio.io/rev: openshift-gateway
                   app.kubernetes.io/part-of: connectivity-link
-                  app.kubernetes.io/managed-by: argocd
+                  argocd.argoproj.io/managed-by: openshift-gitops
               spec:
                 gatewayClassName: istio
                 listeners:

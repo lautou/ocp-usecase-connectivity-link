@@ -3,4 +3,4 @@ kind: Namespace
 metadata:
   name: ingress-gateway
   labels:
-    app.kubernetes.io/managed-by: argocd
+    argocd.argoproj.io/managed-by: openshift-gitops
