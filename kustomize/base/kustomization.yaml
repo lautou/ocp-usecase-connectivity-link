@@ -2,10 +2,16 @@ apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 
 resources:
-  - cluster-ns-ingress-gateway.yaml
-  - ack-system-hostedzone-globex.yaml
-  - openshift-gitops-job-globex-ns-delegation.yaml
+  # Cluster-scoped resources
+  - cluster-gatewayclass-istio.yaml
 
-commonLabels:
-  app.kubernetes.io/part-of: connectivity-link
-  app.kubernetes.io/managed-by: argocd
+  # Namespaces
+  - cluster-ns-echo-api.yaml
+  - cluster-ns-ingress-gateway.yaml
+
+  # ingress-gateway namespace resources
+  - ingress-gateway-tlspolicy-prod-web-tls-policy.yaml
+
+  # openshift-gitops namespace resources (Jobs for dynamic configuration)
+  - openshift-gitops-job-globex-ns-delegation.yaml
+  - openshift-gitops-job-gateway-prod-web.yaml

@@ -19,12 +19,50 @@ spec:
               set -e
 
               echo "========================================"
-              echo "Route53 NS Delegation Dynamic Setup"
+              echo "Route53 DNS Infrastructure Setup"
               echo "========================================"
+
+              # Get cluster domain first
+              echo ""
+              echo "[1/6] Getting cluster domain..."
+              BASE_DOMAIN=$(oc get dns cluster -o jsonpath='{.spec.baseDomain}')
+              SUBDOMAIN_NAME="globex"
+              FULL_DOMAIN="${SUBDOMAIN_NAME}.${BASE_DOMAIN}"
+
+              echo "✓ Cluster base domain: ${BASE_DOMAIN}"
+              echo "✓ Full subdomain: ${FULL_DOMAIN}"
+
+              # Create HostedZone
+              echo ""
+              echo "[2/6] Creating HostedZone for ${FULL_DOMAIN}..."
+              cat <<EOF | oc apply -f -
+              apiVersion: route53.services.k8s.aws/v1alpha1
+              kind: HostedZone
+              metadata:
+                name: globex
+                namespace: ack-system
+                annotations:
+                  argocd.argoproj.io/sync-options: SkipDryRunOnMissingResource=true
+                labels:
+                  app.kubernetes.io/part-of: connectivity-link
+                  app.kubernetes.io/managed-by: argocd
+              spec:
+                name: ${FULL_DOMAIN}
+                hostedZoneConfig:
+                  comment: "Globex subdomain for Red Hat Connectivity Link"
+                tags:
+                  - key: managed-by
+                    value: ack-route53
+                  - key: purpose
+                    value: connectivity-link
+                  - key: environment
+                    value: openshift
+              EOF
+              echo "✓ HostedZone created/updated"
 
               # Wait for HostedZone to be ready
               echo ""
-              echo "[1/5] Waiting for HostedZone globex to be ready..."
+              echo "[3/6] Waiting for HostedZone globex to be ready..."
               RETRY_COUNT=0
               MAX_RETRIES=60
               while [ $RETRY_COUNT -lt $MAX_RETRIES ]; do
@@ -47,7 +85,7 @@ spec:
 
               # Extract nameservers from HostedZone
               echo ""
-              echo "[2/5] Extracting nameservers from HostedZone globex..."
+              echo "[4/6] Extracting nameservers from HostedZone globex..."
               NAMESERVERS=$(oc get hostedzone globex -n ack-system -o jsonpath='{.status.delegationSet.nameServers[*]}')
 
               if [ -z "$NAMESERVERS" ]; then
@@ -60,26 +98,23 @@ spec:
                 echo "  - $NS"
               done
 
-              # Get cluster info and parent zone
+              # Get parent zone info
               echo ""
-              echo "[3/5] Getting cluster domain and parent zone..."
-              BASE_DOMAIN=$(oc get dns cluster -o jsonpath='{.spec.baseDomain}')
+              echo "[5/6] Getting parent zone information..."
               PARENT_ZONE_ID=$(oc get dns cluster -o jsonpath='{.spec.publicZone.id}')
-              SUBDOMAIN_NAME="globex"
-              FULL_DOMAIN="${SUBDOMAIN_NAME}.${BASE_DOMAIN}"
 
               # Extract root domain from baseDomain (remove cluster name prefix)
               # e.g., myocp.sandbox4993.opentlc.com -> sandbox4993.opentlc.com
               ROOT_DOMAIN=$(echo "${BASE_DOMAIN}" | sed 's/^[^.]*\.//')
 
-              echo "✓ Cluster base domain: ${BASE_DOMAIN}"
               echo "✓ Root domain: ${ROOT_DOMAIN}"
-              echo "✓ Full subdomain: ${FULL_DOMAIN}"
               echo "✓ Parent zone ID (from cluster): ${PARENT_ZONE_ID}"
 
-              # Check if RecordSet already exists
+              # Create RecordSet for NS delegation
               echo ""
-              echo "[4/5] Checking for existing NS delegation RecordSet..."
+              echo "[6/6] Creating NS delegation RecordSet..."
+
+              # Check if RecordSet already exists for logging
               if oc get recordset globex-ns-delegation -n ack-system &>/dev/null; then
                 echo "⚠ RecordSet globex-ns-delegation already exists, updating..."
                 ACTION="updated"
@@ -87,10 +122,6 @@ spec:
                 echo "✓ RecordSet does not exist, will create new one"
                 ACTION="created"
               fi
-
-              # Create RecordSet for NS delegation
-              echo ""
-              echo "[5/5] Creating/Updating RecordSet for NS delegation..."
 
               # Build resourceRecords array
               RESOURCE_RECORDS=""
