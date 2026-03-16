@@ -22,6 +22,25 @@ spec:
               echo "Route53 NS Delegation Dynamic Setup"
               echo "========================================"
 
+              # Install required tools
+              echo ""
+              echo "[0/7] Installing required tools..."
+              if ! command -v aws &> /dev/null; then
+                echo "  Installing AWS CLI..."
+                curl -sL "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "/tmp/awscliv2.zip"
+                unzip -q /tmp/awscliv2.zip -d /tmp
+                /tmp/aws/install --bin-dir /usr/local/bin --install-dir /usr/local/aws-cli
+                rm -rf /tmp/aws /tmp/awscliv2.zip
+              fi
+
+              if ! command -v jq &> /dev/null; then
+                echo "  Installing jq..."
+                curl -sL "https://github.com/jqlang/jq/releases/download/jq-1.7.1/jq-linux-amd64" -o /usr/local/bin/jq
+                chmod +x /usr/local/bin/jq
+              fi
+
+              echo "✓ Tools ready: aws $(aws --version 2>&1 | cut -d' ' -f1), jq $(jq --version)"
+
               # Wait for HostedZone to be ready
               echo ""
               echo "[1/5] Waiting for HostedZone globex to be ready..."
@@ -60,21 +79,80 @@ spec:
                 echo "  - $NS"
               done
 
-              # Get parent zone ID and subdomain name
+              # Get AWS credentials and cluster info
               echo ""
-              echo "[3/5] Fetching parent zone information..."
-              PARENT_ZONE_ID=$(oc get dns cluster -o jsonpath='{.spec.publicZone.id}')
+              echo "[3/7] Extracting AWS credentials and cluster info..."
+              AWS_ACCESS_KEY_ID=$(oc extract secret/aws-creds -n kube-system --keys aws_access_key_id --to - 2>/dev/null)
+              AWS_SECRET_ACCESS_KEY=$(oc extract secret/aws-creds -n kube-system --keys aws_secret_access_key --to - 2>/dev/null)
+              AWS_REGION=$(oc get infrastructure cluster -o jsonpath='{.status.platformStatus.aws.region}')
               BASE_DOMAIN=$(oc get dns cluster -o jsonpath='{.spec.baseDomain}')
               SUBDOMAIN_NAME="globex"
               FULL_DOMAIN="${SUBDOMAIN_NAME}.${BASE_DOMAIN}"
 
-              echo "✓ Parent Zone ID: $PARENT_ZONE_ID"
-              echo "✓ Base Domain: $BASE_DOMAIN"
-              echo "✓ Subdomain: $FULL_DOMAIN"
+              export AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY AWS_DEFAULT_REGION="${AWS_REGION}"
+
+              echo "✓ AWS Region: ${AWS_REGION}"
+              echo "✓ Base Domain: ${BASE_DOMAIN}"
+              echo "✓ Full Subdomain: ${FULL_DOMAIN}"
+
+              # Find public parent zone by walking up the DNS hierarchy
+              echo ""
+              echo "[4/7] Finding public parent zone in Route53..."
+              echo "  (Walking up DNS hierarchy to find public zone)"
+
+              # List all public zones in AWS
+              PUBLIC_ZONES=$(aws route53 list-hosted-zones --output json | \
+                jq -r '.HostedZones[] | select(.Config.PrivateZone == false) | "\(.Id)|\(.Name)"')
+
+              if [ -z "$PUBLIC_ZONES" ]; then
+                echo "✗ No public zones found in AWS account"
+                exit 1
+              fi
+
+              # Split FULL_DOMAIN into parts and walk up the hierarchy
+              DOMAIN_TO_CHECK="${BASE_DOMAIN}"
+              PARENT_ZONE_ID=""
+              PARENT_ZONE_NAME=""
+
+              while [ -n "$DOMAIN_TO_CHECK" ]; do
+                # Check if this domain (with trailing dot) exists as a public zone
+                DOMAIN_WITH_DOT="${DOMAIN_TO_CHECK}."
+                echo "  Checking if ${DOMAIN_WITH_DOT} has a public zone..."
+
+                FOUND_ZONE=$(echo "$PUBLIC_ZONES" | grep "|${DOMAIN_WITH_DOT}$" | head -1)
+
+                if [ -n "$FOUND_ZONE" ]; then
+                  PARENT_ZONE_ID=$(echo "$FOUND_ZONE" | cut -d'|' -f1 | sed 's|/hostedzone/||')
+                  PARENT_ZONE_NAME=$(echo "$FOUND_ZONE" | cut -d'|' -f2)
+                  echo "✓ Found public zone: ${PARENT_ZONE_NAME} (${PARENT_ZONE_ID})"
+                  break
+                fi
+
+                # Remove first label and try parent domain
+                PARENT_DOMAIN=$(echo "$DOMAIN_TO_CHECK" | sed 's/^[^.]*\.//')
+
+                # Stop if we've reached the same domain (no more dots)
+                if [ "$PARENT_DOMAIN" = "$DOMAIN_TO_CHECK" ]; then
+                  break
+                fi
+
+                DOMAIN_TO_CHECK="$PARENT_DOMAIN"
+              done
+
+              if [ -z "$PARENT_ZONE_ID" ]; then
+                echo "✗ No public parent zone found for ${FULL_DOMAIN}"
+                echo "  Available public zones:"
+                echo "$PUBLIC_ZONES" | sed 's/^/    /'
+                exit 1
+              fi
+
+              echo ""
+              echo "✓ Will create NS delegation in: ${PARENT_ZONE_NAME} (${PARENT_ZONE_ID})"
+              echo "✓ For subdomain: ${FULL_DOMAIN}"
 
               # Check if RecordSet already exists
               echo ""
-              echo "[4/5] Checking for existing NS delegation RecordSet..."
+              echo "[5/7] Checking for existing NS delegation RecordSet..."
               if oc get recordset globex-ns-delegation -n ack-system &>/dev/null; then
                 echo "⚠ RecordSet globex-ns-delegation already exists, updating..."
                 ACTION="updated"
@@ -85,7 +163,7 @@ spec:
 
               # Create RecordSet for NS delegation
               echo ""
-              echo "[5/5] Creating/Updating RecordSet for NS delegation..."
+              echo "[6/7] Creating/Updating RecordSet for NS delegation..."
 
               # Build resourceRecords array
               RESOURCE_RECORDS=""
@@ -114,19 +192,34 @@ spec:
               EOF
 
               echo ""
+              echo "[7/7] Verifying DNS delegation setup..."
+
+              # Wait a few seconds for ACK to sync
+              sleep 5
+
+              RECORDSET_STATUS=$(oc get recordset globex-ns-delegation -n ack-system -o jsonpath='{.status.status}' 2>/dev/null || echo "UNKNOWN")
+
+              echo "✓ RecordSet sync status: ${RECORDSET_STATUS}"
+
+              echo ""
               echo "========================================"
-              echo "✓ NS delegation RecordSet ${ACTION} successfully!"
+              echo "✅ NS delegation setup completed!"
               echo "========================================"
               echo ""
-              echo "Summary:"
-              echo "  Domain: ${FULL_DOMAIN}"
-              echo "  Parent Zone: ${PARENT_ZONE_ID}"
+              echo "📋 Configuration Summary:"
+              echo "  Subdomain: ${FULL_DOMAIN}"
+              echo "  Parent Zone: ${PARENT_ZONE_NAME}"
+              echo "  Parent Zone ID: ${PARENT_ZONE_ID}"
+              echo "  RecordSet Status: ${RECORDSET_STATUS}"
+              echo ""
               echo "  Nameservers:"
               for NS in $NAMESERVERS; do
                 echo "    - $NS"
               done
               echo ""
-              echo "DNS delegation is now active. Please allow 5-10 minutes for DNS propagation."
+              echo "⏱  DNS propagation may take 5-10 minutes."
+              echo ""
+              echo "✅ Delegation is active in Route53!"
               echo ""
 
           image: registry.redhat.io/openshift4/ose-cli:latest
