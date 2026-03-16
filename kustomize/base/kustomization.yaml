@@ -11,6 +11,10 @@ resources:
   - cluster-ns-echo-api.yaml
   - cluster-ns-ingress-gateway.yaml
 
+  # echo-api namespace resources
+  - echo-api-deployment-echo-api.yaml
+  - echo-api-service-echo-api.yaml
+
   # ingress-gateway namespace resources
   - ingress-gateway-tlspolicy-prod-web-tls-policy.yaml
 
