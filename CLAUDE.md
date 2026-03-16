@@ -12,13 +12,13 @@ This repository contains GitOps manifests for deploying Red Hat Connectivity Lin
 
 ### Components
 
-1. **HostedZone CR** (`kustomize/base/hostedzone.yaml`)
+1. **HostedZone CR** (`kustomize/base/ack-system-hostedzone-globex.yaml`)
    - Creates a Route53 hosted zone for `globex.<cluster-domain>`
    - Managed by ACK Route53 controller
    - Zone is public (not private)
    - Tagged for tracking and cost allocation
 
-2. **NS Delegation Job** (`kustomize/base/ns-delegation-job.yaml`)
+2. **NS Delegation Job** (`kustomize/base/openshift-gitops-job-globex-ns-delegation.yaml`)
    - **100% Dynamic** approach inspired by `ocp-open-env-install-tool`
    - Runs as ArgoCD Sync Hook with the `openshift-gitops-argocd-application-controller` ServiceAccount
    - **Automatically** extracts nameservers from HostedZone status
@@ -144,9 +144,9 @@ dig $DOMAIN SOA +short
 .
 ├── kustomize/
 │   ├── base/
-│   │   ├── hostedzone.yaml         # HostedZone CR for globex subdomain
-│   │   ├── ns-delegation-job.yaml  # Dynamic NS delegation Job
-│   │   └── kustomization.yaml      # Base Kustomize config
+│   │   ├── ack-system-hostedzone-globex.yaml                # HostedZone CR for globex subdomain
+│   │   ├── openshift-gitops-job-globex-ns-delegation.yaml   # Dynamic NS delegation Job
+│   │   └── kustomization.yaml                               # Base Kustomize config
 │   └── overlays/
 │       └── default/
 │           └── kustomization.yaml  # Default overlay

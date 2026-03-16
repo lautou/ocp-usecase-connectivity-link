@@ -146,9 +146,9 @@ The system is **fully dynamic** and extracts all necessary information from the 
 .
 ├── kustomize/
 │   ├── base/
-│   │   ├── hostedzone.yaml          # HostedZone CR
-│   │   ├── ns-delegation-job.yaml   # Dynamic NS delegation Job
-│   │   └── kustomization.yaml       # Base Kustomize config
+│   │   ├── ack-system-hostedzone-globex.yaml                # HostedZone CR
+│   │   ├── openshift-gitops-job-globex-ns-delegation.yaml   # Dynamic NS delegation Job
+│   │   └── kustomization.yaml                               # Base Kustomize config
 │   └── overlays/
 │       └── default/
 │           └── kustomization.yaml   # Default overlay

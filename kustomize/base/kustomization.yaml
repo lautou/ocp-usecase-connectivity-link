@@ -2,8 +2,8 @@ apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 
 resources:
-  - hostedzone.yaml
-  - ns-delegation-job.yaml
+  - ack-system-hostedzone-globex.yaml
+  - openshift-gitops-job-globex-ns-delegation.yaml
 
 commonLabels:
   app.kubernetes.io/name: globex-route53
