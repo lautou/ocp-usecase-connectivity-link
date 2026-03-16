@@ -64,26 +64,31 @@ Kustomize Base
 2. ❌ Manual intervention → Not GitOps-friendly
 3. ✅ **Dynamic Job (chosen)** → Fully automated, resilient, GitOps-native
 
-**Implementation Pattern** (from `ocp-open-env-install-tool`):
-- Use Kubernetes Job with `ose-cli` image
+**Implementation Pattern** (inspired by `connectivity-link-ansible`):
+- Use Kubernetes Job with standard `ose-cli` image
 - Run with ArgoCD application controller ServiceAccount (has cluster-admin permissions)
-- Wait for resources to be ready before proceeding
-- Extract dynamic values from cluster state
-- Create/update dependent resources
+- Wait for HostedZone to be ready
+- Extract nameservers from HostedZone status
+- Get parent zone ID from cluster DNS config (`dns.config.openshift.io/cluster`)
+- Create RecordSet in parent zone
 
-### ArgoCD Sync Hook Strategy
+**Simplicity over Complexity**:
+- ✅ Uses cluster DNS config as single source of truth
+- ✅ No tool installation (uses standard ose-cli image)
+- ✅ No AWS API calls for zone discovery
+- ✅ Simple 5-step process (~30 seconds)
 
-The NS delegation Job uses ArgoCD hooks:
+### ArgoCD Job Management
+
+The NS delegation Job uses minimal ArgoCD configuration:
 ```yaml
 annotations:
-  argocd.argoproj.io/hook: Sync
-  argocd.argoproj.io/hook-delete-policy: BeforeHookCreation
   argocd.argoproj.io/sync-options: Force=true
 ```
 
-- `hook: Sync` - Runs during ArgoCD sync phase (after HostedZone is created)
-- `hook-delete-policy: BeforeHookCreation` - Cleans up previous Job runs
-- `Force=true` - Allows recreation on every sync
+- `Force=true` - Allows Job recreation if deleted
+- No hooks - Job is a regular managed resource
+- Completed Jobs are preserved for audit (no TTL cleanup)
 
 ### Why SkipDryRunOnMissingResource?
 
@@ -154,15 +159,16 @@ dig $DOMAIN SOA +short
 
 ## Configuration
 
-All configuration is **cluster-aware** and extracted dynamically:
+All configuration is **cluster-aware** and extracted from cluster resources:
 
-- **Cluster Domain**: Extracted from `dns.config.openshift.io/cluster`
-- **AWS Region**: Extracted from `infrastructure.config.openshift.io/cluster`
-- **AWS Credentials**: Derived from `kube-system/aws-creds`
-- **Parent Zone ID**: Extracted from `dns.config.openshift.io/cluster`
-- **Nameservers**: Extracted from HostedZone status after creation
+- **Cluster Base Domain**: From `dns.config.openshift.io/cluster` spec.baseDomain (e.g., myocp.sandbox4993.opentlc.com)
+- **Parent Zone ID**: From `dns.config.openshift.io/cluster` spec.publicZone.id (e.g., Z044356419CQ6A6BXXDV3)
+- **Root Domain**: Calculated by removing cluster name from baseDomain (e.g., sandbox4993.opentlc.com)
+- **Nameservers**: Extracted from HostedZone status.delegationSet.nameServers after creation
 
 **No hardcoded values** → Works across different clusters/environments
+
+**Important**: The `spec.publicZone.id` MUST point to the **root public zone** (e.g., sandbox4993.opentlc.com), NOT the cluster's private zone. This follows the same pattern as connectivity-link-ansible.
 
 ## Troubleshooting
 
@@ -224,11 +230,12 @@ argocd app sync usecase-connectivity-link --force
 
 ## Important Notes
 
-- **Job runs every sync**: The Job recreates RecordSet on every ArgoCD sync (idempotent)
-- **Nameservers don't change**: AWS rarely changes zone nameservers, but our dynamic approach handles it
-- **Parent zone must be writable**: ACK needs permission to modify parent zone
-- **Hook ordering**: Job runs during Sync phase, after HostedZone is applied
+- **Completed Jobs are preserved**: No TTL cleanup - Jobs remain for audit/debugging
+- **Job recreates on deletion**: With `Force=true`, deleting the Job triggers recreation on next sync
+- **Idempotent operations**: `oc apply` makes RecordSet creation safe to re-run
+- **Parent zone must be writable**: ACK needs permission to modify the public zone
 - **ServiceAccount**: Job uses `openshift-gitops-argocd-application-controller` (has cluster-admin)
+- **Fast execution**: ~30-45 seconds (no tool installation overhead)
 
 ## Related Projects
 
