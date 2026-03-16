@@ -22,40 +22,16 @@ spec:
               echo "Route53 NS Delegation Dynamic Setup"
               echo "========================================"
 
-              # Install required tools
+              # Verify required tools are available
               echo ""
-              echo "[0/7] Installing required tools (aws-cli, jq, unzip)..."
-
-              # Install unzip first (needed for AWS CLI)
-              if ! command -v unzip &> /dev/null; then
-                echo "  Installing unzip..."
-                microdnf install -y unzip >/dev/null 2>&1 || true
-              fi
-
-              # Install AWS CLI
-              if ! command -v aws &> /dev/null; then
-                echo "  Installing AWS CLI v2..."
-                curl -sL "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "/tmp/awscliv2.zip"
-                unzip -q /tmp/awscliv2.zip -d /tmp
-                /tmp/aws/install --bin-dir /usr/local/bin --install-dir /usr/local/aws-cli >/dev/null 2>&1
-                rm -rf /tmp/aws /tmp/awscliv2.zip
-              fi
-
-              # Install jq
-              if ! command -v jq &> /dev/null; then
-                echo "  Installing jq..."
-                curl -sL "https://github.com/jqlang/jq/releases/download/jq-1.7.1/jq-linux-amd64" -o /usr/local/bin/jq
-                chmod +x /usr/local/bin/jq
-              fi
-
-              echo "✓ Tools ready:"
+              echo "[0/7] Verifying tools..."
               echo "  - aws: $(aws --version 2>&1 | head -1)"
               echo "  - jq: $(jq --version)"
               echo "  - oc: $(oc version --client --short 2>&1 | head -1)"
 
               # Wait for HostedZone to be ready
               echo ""
-              echo "[1/5] Waiting for HostedZone globex to be ready..."
+              echo "[1/7] Waiting for HostedZone globex to be ready..."
               RETRY_COUNT=0
               MAX_RETRIES=60
               while [ $RETRY_COUNT -lt $MAX_RETRIES ]; do
@@ -78,7 +54,7 @@ spec:
 
               # Extract nameservers from HostedZone
               echo ""
-              echo "[2/5] Extracting nameservers from HostedZone globex..."
+              echo "[2/7] Extracting nameservers from HostedZone globex..."
               NAMESERVERS=$(oc get hostedzone globex -n ack-system -o jsonpath='{.status.delegationSet.nameServers[*]}')
 
               if [ -z "$NAMESERVERS" ]; then
@@ -234,7 +210,10 @@ spec:
               echo "✅ Delegation is active in Route53!"
               echo ""
 
-          image: registry.redhat.io/openshift4/ose-cli:latest
+          # Custom image with oc + aws-cli + jq pre-installed
+          # Built from Containerfile in this repo
+          image: ghcr.io/lautou/ocp-usecase-connectivity-link/ocp-aws-tools:latest
           name: ns-delegation
+          imagePullPolicy: Always
       restartPolicy: OnFailure
       serviceAccountName: openshift-gitops-argocd-application-controller
