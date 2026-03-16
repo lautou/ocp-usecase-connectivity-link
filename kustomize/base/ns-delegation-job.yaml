@@ -3,8 +3,6 @@ kind: Job
 metadata:
   annotations:
     argocd.argoproj.io/sync-options: Force=true
-    argocd.argoproj.io/hook: Sync
-    argocd.argoproj.io/hook-delete-policy: BeforeHookCreation
   name: globex-ns-delegation
   namespace: openshift-gitops
 spec:
