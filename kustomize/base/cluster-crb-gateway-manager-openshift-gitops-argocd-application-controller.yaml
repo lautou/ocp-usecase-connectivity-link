@@ -1,11 +1,11 @@
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
 metadata:
-  name: istiod-clusterrole-openshift-gateway-openshift-ingress-openshift-gitops-argocd-application-controller
+  name: gateway-manager-openshift-gitops-argocd-application-controller
 roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: ClusterRole
-  name: istiod-clusterrole-openshift-gateway-openshift-ingress
+  name: gateway-manager
 subjects:
   - kind: ServiceAccount
     name: openshift-gitops-argocd-application-controller
