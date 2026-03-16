@@ -1,0 +1,138 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  annotations:
+    argocd.argoproj.io/sync-options: Force=true
+    argocd.argoproj.io/hook: Sync
+    argocd.argoproj.io/hook-delete-policy: BeforeHookCreation
+  name: globex-ns-delegation
+  namespace: openshift-gitops
+spec:
+  backoffLimit: 10
+  template:
+    metadata:
+      name: globex-ns-delegation
+    spec:
+      containers:
+        - command:
+            - /bin/bash
+            - -c
+            - |
+              #!/bin/bash
+              set -e
+
+              echo "========================================"
+              echo "Route53 NS Delegation Dynamic Setup"
+              echo "========================================"
+
+              # Wait for HostedZone to be ready
+              echo ""
+              echo "[1/5] Waiting for HostedZone globex to be ready..."
+              RETRY_COUNT=0
+              MAX_RETRIES=60
+              while [ $RETRY_COUNT -lt $MAX_RETRIES ]; do
+                if oc get hostedzone globex -n ack-system &>/dev/null; then
+                  STATUS=$(oc get hostedzone globex -n ack-system -o jsonpath='{.status.conditions[?(@.type=="ACK.ResourceSynced")].status}' 2>/dev/null || echo "")
+                  if [ "$STATUS" = "True" ]; then
+                    echo "✓ HostedZone globex is ready"
+                    break
+                  fi
+                fi
+                echo "  Waiting for HostedZone globex to sync... (attempt $((RETRY_COUNT+1))/$MAX_RETRIES)"
+                sleep 10
+                RETRY_COUNT=$((RETRY_COUNT+1))
+              done
+
+              if [ $RETRY_COUNT -eq $MAX_RETRIES ]; then
+                echo "✗ Timeout waiting for HostedZone globex"
+                exit 1
+              fi
+
+              # Extract nameservers from HostedZone
+              echo ""
+              echo "[2/5] Extracting nameservers from HostedZone globex..."
+              NAMESERVERS=$(oc get hostedzone globex -n ack-system -o jsonpath='{.status.delegationSet.nameServers[*]}')
+
+              if [ -z "$NAMESERVERS" ]; then
+                echo "✗ No nameservers found in HostedZone status"
+                exit 1
+              fi
+
+              echo "✓ Found nameservers:"
+              for NS in $NAMESERVERS; do
+                echo "  - $NS"
+              done
+
+              # Get parent zone ID and subdomain name
+              echo ""
+              echo "[3/5] Fetching parent zone information..."
+              PARENT_ZONE_ID=$(oc get dns cluster -o jsonpath='{.spec.publicZone.id}')
+              BASE_DOMAIN=$(oc get dns cluster -o jsonpath='{.spec.baseDomain}')
+              SUBDOMAIN_NAME="globex"
+              FULL_DOMAIN="${SUBDOMAIN_NAME}.${BASE_DOMAIN}"
+
+              echo "✓ Parent Zone ID: $PARENT_ZONE_ID"
+              echo "✓ Base Domain: $BASE_DOMAIN"
+              echo "✓ Subdomain: $FULL_DOMAIN"
+
+              # Check if RecordSet already exists
+              echo ""
+              echo "[4/5] Checking for existing NS delegation RecordSet..."
+              if oc get recordset globex-ns-delegation -n ack-system &>/dev/null; then
+                echo "⚠ RecordSet globex-ns-delegation already exists, updating..."
+                ACTION="updated"
+              else
+                echo "✓ RecordSet does not exist, will create new one"
+                ACTION="created"
+              fi
+
+              # Create RecordSet for NS delegation
+              echo ""
+              echo "[5/5] Creating/Updating RecordSet for NS delegation..."
+
+              # Build resourceRecords array
+              RESOURCE_RECORDS=""
+              for NS in $NAMESERVERS; do
+                RESOURCE_RECORDS="${RESOURCE_RECORDS}
+                - value: ${NS}"
+              done
+
+              cat <<EOF | oc apply -f -
+              apiVersion: route53.services.k8s.aws/v1alpha1
+              kind: RecordSet
+              metadata:
+                name: globex-ns-delegation
+                namespace: ack-system
+                labels:
+                  app.kubernetes.io/name: globex-route53
+                  app.kubernetes.io/component: dns-delegation
+                  app.kubernetes.io/part-of: connectivity-link
+                  app.kubernetes.io/managed-by: argocd
+              spec:
+                name: ${FULL_DOMAIN}
+                recordType: NS
+                ttl: 300
+                hostedZoneID: ${PARENT_ZONE_ID}
+                resourceRecords:${RESOURCE_RECORDS}
+              EOF
+
+              echo ""
+              echo "========================================"
+              echo "✓ NS delegation RecordSet ${ACTION} successfully!"
+              echo "========================================"
+              echo ""
+              echo "Summary:"
+              echo "  Domain: ${FULL_DOMAIN}"
+              echo "  Parent Zone: ${PARENT_ZONE_ID}"
+              echo "  Nameservers:"
+              for NS in $NAMESERVERS; do
+                echo "    - $NS"
+              done
+              echo ""
+              echo "DNS delegation is now active. Please allow 5-10 minutes for DNS propagation."
+              echo ""
+
+          image: registry.redhat.io/openshift4/ose-cli:latest
+          name: ns-delegation
+      restartPolicy: OnFailure
+      serviceAccountName: openshift-gitops-argocd-application-controller

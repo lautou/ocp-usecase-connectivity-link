@@ -5,6 +5,7 @@ namespace: ack-system
 
 resources:
   - hostedzone.yaml
+  - ns-delegation-job.yaml
 
 commonLabels:
   app.kubernetes.io/name: globex-route53
