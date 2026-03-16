@@ -24,22 +24,34 @@ spec:
 
               # Install required tools
               echo ""
-              echo "[0/7] Installing required tools..."
+              echo "[0/7] Installing required tools (aws-cli, jq, unzip)..."
+
+              # Install unzip first (needed for AWS CLI)
+              if ! command -v unzip &> /dev/null; then
+                echo "  Installing unzip..."
+                microdnf install -y unzip >/dev/null 2>&1 || true
+              fi
+
+              # Install AWS CLI
               if ! command -v aws &> /dev/null; then
-                echo "  Installing AWS CLI..."
+                echo "  Installing AWS CLI v2..."
                 curl -sL "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "/tmp/awscliv2.zip"
                 unzip -q /tmp/awscliv2.zip -d /tmp
-                /tmp/aws/install --bin-dir /usr/local/bin --install-dir /usr/local/aws-cli
+                /tmp/aws/install --bin-dir /usr/local/bin --install-dir /usr/local/aws-cli >/dev/null 2>&1
                 rm -rf /tmp/aws /tmp/awscliv2.zip
               fi
 
+              # Install jq
               if ! command -v jq &> /dev/null; then
                 echo "  Installing jq..."
                 curl -sL "https://github.com/jqlang/jq/releases/download/jq-1.7.1/jq-linux-amd64" -o /usr/local/bin/jq
                 chmod +x /usr/local/bin/jq
               fi
 
-              echo "✓ Tools ready: aws $(aws --version 2>&1 | cut -d' ' -f1), jq $(jq --version)"
+              echo "✓ Tools ready:"
+              echo "  - aws: $(aws --version 2>&1 | head -1)"
+              echo "  - jq: $(jq --version)"
+              echo "  - oc: $(oc version --client --short 2>&1 | head -1)"
 
               # Wait for HostedZone to be ready
               echo ""
