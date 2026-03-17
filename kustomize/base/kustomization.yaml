@@ -17,10 +17,12 @@ resources:
   - echo-api-service-echo-api.yaml
 
   # ingress-gateway namespace resources
+  - ingress-gateway-dnspolicy-prod-web-dnspolicy.yaml
   - ingress-gateway-gateway-prod-web.yaml
   - ingress-gateway-tlspolicy-prod-web-tls-policy.yaml
 
   # openshift-gitops namespace resources (Jobs for dynamic configuration)
+  - openshift-gitops-job-aws-credentials.yaml
   - openshift-gitops-job-echo-api-httproute.yaml
   - openshift-gitops-job-gateway-prod-web.yaml
   - openshift-gitops-job-globex-ns-delegation.yaml
