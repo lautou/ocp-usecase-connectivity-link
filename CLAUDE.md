@@ -37,25 +37,38 @@ This repository contains GitOps manifests for deploying Red Hat Connectivity Lin
    - Targets the Gateway `prod-web`
    - Automatically creates Let's Encrypt certificate in Secret `api-tls`
 
-6. **Echo API Application** (echo-api namespace)
+6. **DNSPolicy** (`ingress-gateway-dnspolicy-prod-web-dnspolicy.yaml`)
+   - Kuadrant DNSPolicy for automatic DNS record management in Route53
+   - References Secret `aws-credentials` (type: `kuadrant.io/aws`)
+   - Targets the Gateway `prod-web`
+   - Automatically creates CNAME records pointing Gateway hostnames to Load Balancer
+
+7. **Echo API Application** (echo-api namespace)
    - **Deployment** (`echo-api-deployment-echo-api.yaml`) - 1 replica, image: `quay.io/3scale/authorino:echo-api`
    - **Service** (`echo-api-service-echo-api.yaml`) - ClusterIP exposing port 8080
    - **HTTPRoute** (`echo-api-httproute-echo-api.yaml`) - Static YAML with placeholder hostname: `echo.globex.placeholder`
    - **Patched by Job** to use actual cluster domain
 
-7. **Jobs** (openshift-gitops namespace)
-   - **Job #1: DNS Setup** (`openshift-gitops-job-globex-ns-delegation.yaml`)
+8. **Jobs** (openshift-gitops namespace)
+   - **Job #1: AWS Credentials Setup** (`openshift-gitops-job-aws-credentials.yaml`)
+     - Extracts AWS credentials from `kube-system/aws-creds`
+     - Extracts AWS region from cluster infrastructure
+     - Creates Secret `aws-credentials` with type `kuadrant.io/aws`
+     - Required for DNSPolicy to manage Route53 records
+     - 3 steps, ~5 seconds execution
+
+   - **Job #2: DNS Setup** (`openshift-gitops-job-globex-ns-delegation.yaml`)
      - Creates HostedZone CR for `globex.<cluster-domain>`
      - Waits for ACK Route53 controller to provision zone in AWS
      - Extracts nameservers from HostedZone status
      - Creates RecordSet CR for NS delegation in parent zone
      - 6 steps, ~45 seconds execution
 
-   - **Job #2: Gateway Patch** (`openshift-gitops-job-gateway-prod-web.yaml`)
+   - **Job #3: Gateway Patch** (`openshift-gitops-job-gateway-prod-web.yaml`)
      - Patches Gateway hostname from placeholder to `*.globex.<cluster-domain>`
      - 2 steps, ~5 seconds execution
 
-   - **Job #3: HTTPRoute Patch** (`openshift-gitops-job-echo-api-httproute.yaml`)
+   - **Job #4: HTTPRoute Patch** (`openshift-gitops-job-echo-api-httproute.yaml`)
      - Patches HTTPRoute hostname from placeholder to `echo.globex.<cluster-domain>`
      - 2 steps, ~5 seconds execution
 
@@ -72,15 +85,18 @@ Kustomize Base
     ├── GatewayClass (istio)
     ├── Gateway (static YAML with placeholder)
     ├── TLSPolicy (cert-manager integration)
+    ├── DNSPolicy (Kuadrant DNS for Internet exposure)
     ├── HTTPRoute (static YAML with placeholder)
     ├── Deployment + Service (echo-api)
-    └── Jobs (patch hostnames, create DNS resources)
+    └── Jobs (create AWS credentials, patch hostnames, create DNS resources)
 
 Jobs execute:
-    Job #1 (DNS) → Creates HostedZone + RecordSet in ack-system
-    Job #2 (Gateway) → Patches Gateway hostname
-    Job #3 (HTTPRoute) → Patches HTTPRoute hostname
+    Job #1 (AWS) → Creates aws-credentials Secret (type: kuadrant.io/aws)
+    Job #2 (DNS) → Creates HostedZone + RecordSet in ack-system
+    Job #3 (Gateway) → Patches Gateway hostname
+    Job #4 (HTTPRoute) → Patches HTTPRoute hostname
 
+DNSPolicy creates DNS records in Route53 pointing to Gateway Load Balancer
 ArgoCD ignores hostname drifts (ignoreDifferences)
 ```
 
@@ -95,7 +111,9 @@ ArgoCD ignores hostname drifts (ignoreDifferences)
   - GatewayClass `istio` must be available
 - **cert-manager** installed cluster-wide
   - ClusterIssuer named `cluster` must exist (configured for Let's Encrypt)
-- **Kuadrant Operator** installed (provides TLSPolicy CRD)
+- **Kuadrant Operator** installed (provides TLSPolicy and DNSPolicy CRDs)
+  - DNS Operator component must be running (manages DNS records in Route53)
+- AWS credentials in `kube-system/aws-creds` (for DNSPolicy provider)
 - Parent Route53 zone must exist and be accessible
 
 ## Key Design Decisions
@@ -171,6 +189,40 @@ ignoreDifferences:
 
 This tells ArgoCD: "These fields are managed by Jobs, not Git. Don't overwrite them."
 
+### Kuadrant DNSPolicy and AWS Provider
+
+**DNSPolicy** automatically creates DNS records in Route53 for Gateway endpoints, enabling Internet access.
+
+**Critical Requirement**: The AWS credentials Secret MUST have type `kuadrant.io/aws` (not `Opaque`).
+
+**Why?** Kuadrant DNS Operator detects the provider type by inspecting the Secret type:
+- `kuadrant.io/aws` → AWS Route53 provider
+- `kuadrant.io/gcp` → Google Cloud DNS provider
+- `kuadrant.io/azure` → Azure DNS provider
+
+**Secret Format**:
+```yaml
+apiVersion: v1
+kind: Secret
+metadata:
+  name: aws-credentials
+  namespace: ingress-gateway
+type: kuadrant.io/aws  # ← CRITICAL: Must be this exact type
+stringData:
+  AWS_ACCESS_KEY_ID: "AKIAXXXXXXXXXXXX"
+  AWS_SECRET_ACCESS_KEY: "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+  AWS_REGION: "eu-central-1"
+```
+
+**What DNSPolicy Does**:
+1. Watches Gateway `prod-web` (specified in `targetRef`)
+2. Extracts Gateway listener hostnames (e.g., `*.globex.myocp.sandbox4993.opentlc.com`)
+3. Gets Load Balancer address from Gateway status
+4. Creates CNAME records in Route53 zone `globex.myocp.sandbox4993.opentlc.com`
+5. Points hostnames → Load Balancer (e.g., `echo.globex.myocp → addf65e4-656871736.eu-central-1.elb.amazonaws.com`)
+
+**Result**: Internet users can access `https://echo.globex.myocp.sandbox4993.opentlc.com`
+
 ### Job Management
 
 All Jobs use minimal ArgoCD configuration:
@@ -182,7 +234,7 @@ annotations:
 - `Force=true` - Allows Job recreation if deleted
 - No hooks - Jobs are regular managed resources
 - Completed Jobs are preserved for audit (no TTL cleanup)
-- Jobs can run in parallel (no interdependencies)
+- Jobs run in parallel where possible (Job #1 is independent of Jobs #3-4)
 
 ## Deployment
 
@@ -199,17 +251,20 @@ oc apply -f argocd/application.yaml
 oc get application usecase-connectivity-link -n openshift-gitops -w
 
 # Check all Jobs
-oc get job -n openshift-gitops | grep -E "globex-ns-delegation|gateway-prod-web|echo-api-httproute"
+oc get job -n openshift-gitops | grep -E "aws-credentials|globex-ns-delegation|gateway-prod-web|echo-api-httproute"
 
 # Check resources
 oc get hostedzone globex -n ack-system
 oc get recordset globex-ns-delegation -n ack-system
+oc get dnspolicy prod-web-dnspolicy -n ingress-gateway
+oc get secret aws-credentials -n ingress-gateway
 oc get gateway prod-web -n ingress-gateway
 oc get httproute echo-api -n echo-api
 oc get tlspolicy prod-web-tls-policy -n ingress-gateway
 oc get certificate -n ingress-gateway
 
 # Check Job logs
+oc logs -n openshift-gitops job/aws-credentials-setup
 oc logs -n openshift-gitops job/globex-ns-delegation
 oc logs -n openshift-gitops job/gateway-prod-web-setup
 oc logs -n openshift-gitops job/echo-api-httproute-setup
@@ -237,8 +292,14 @@ oc get gateway prod-web -n ingress-gateway -o jsonpath='{.spec.listeners[0].host
 # Check HTTPRoute hostname (should be echo.globex.<cluster-domain>)
 oc get httproute echo-api -n echo-api -o jsonpath='{.spec.hostnames[0]}'
 
-# Test echo-api application
+# Check DNSPolicy is enforced
+oc get dnspolicy prod-web-dnspolicy -n ingress-gateway -o jsonpath='{.status.conditions}' | jq '.[] | select(.type=="Enforced")'
+
+# Check DNS resolution from Internet
 HOSTNAME=$(oc get httproute echo-api -n echo-api -o jsonpath='{.spec.hostnames[0]}')
+dig +short $HOSTNAME
+
+# Test echo-api application from Internet
 curl https://$HOSTNAME
 ```
 
@@ -256,8 +317,10 @@ curl https://$HOSTNAME
 │   │   ├── echo-api-deployment-echo-api.yaml
 │   │   ├── echo-api-httproute-echo-api.yaml
 │   │   ├── echo-api-service-echo-api.yaml
+│   │   ├── ingress-gateway-dnspolicy-prod-web-dnspolicy.yaml
 │   │   ├── ingress-gateway-gateway-prod-web.yaml
 │   │   ├── ingress-gateway-tlspolicy-prod-web-tls-policy.yaml
+│   │   ├── openshift-gitops-job-aws-credentials.yaml
 │   │   ├── openshift-gitops-job-echo-api-httproute.yaml
 │   │   ├── openshift-gitops-job-gateway-prod-web.yaml
 │   │   ├── openshift-gitops-job-globex-ns-delegation.yaml
@@ -288,6 +351,8 @@ All configuration is **cluster-aware** and extracted from cluster resources:
 
 - **Cluster Base Domain**: From `dns.config.openshift.io/cluster` spec.baseDomain (e.g., `myocp.sandbox4993.opentlc.com`)
 - **Parent Zone ID**: From `dns.config.openshift.io/cluster` spec.publicZone.id (e.g., `Z044356419CQ6A6BXXDV3`)
+- **AWS Region**: From `infrastructure.config.openshift.io/cluster` status.platformStatus.aws.region (e.g., `eu-central-1`)
+- **AWS Credentials**: From `kube-system/aws-creds` (created during cluster installation)
 - **Root Domain**: Calculated by removing cluster name from baseDomain (e.g., `sandbox4993.opentlc.com`)
 - **Cluster Name**: First segment of baseDomain (e.g., `myocp`)
 - **Nameservers**: Extracted from HostedZone status.delegationSet.nameServers after creation
@@ -314,16 +379,25 @@ Everything else is 100% dynamic → Works across different clusters/environments
 - Gateway `prod-web` (with placeholder hostname)
 - HTTPRoute `echo-api` (with placeholder hostname)
 - TLSPolicy `prod-web-tls-policy`
+- DNSPolicy `prod-web-dnspolicy`
 - Deployment `echo-api`
 - Service `echo-api`
-- Jobs (3): DNS setup, Gateway patch, HTTPRoute patch
+- Jobs (4): AWS credentials, DNS setup, Gateway patch, HTTPRoute patch
 
-### Dynamic Resources (created by Jobs)
-**In `ack-system` namespace**:
+### Dynamic Resources (created by Jobs/Controllers)
+
+**In `ingress-gateway` namespace** (created by Job #1):
+- Secret `aws-credentials` - AWS credentials for DNSPolicy (type: `kuadrant.io/aws`)
+
+**In `ack-system` namespace** (created by Job #2):
 - HostedZone `globex` - Route53 zone for `globex.<cluster-domain>`
 - RecordSet `globex-ns-delegation` - NS delegation records in parent zone
 
-**Certificate (created by TLSPolicy/cert-manager)**:
+**In Route53** (created by DNSPolicy):
+- CNAME records - Pointing Gateway hostnames to Load Balancer
+  - Example: `echo.globex.myocp.sandbox4993.opentlc.com` → `addf65e4-656871736.eu-central-1.elb.amazonaws.com`
+
+**Certificate** (created by TLSPolicy/cert-manager):
 - Certificate `prod-web-api` - Let's Encrypt wildcard cert for `*.globex.<cluster-domain>`
 - Secret `api-tls` - TLS certificate and key
 
@@ -452,6 +526,55 @@ oc get clusterrolebinding gateway-manager-openshift-gitops-argocd-application-co
 oc auth can-i create gateways.gateway.networking.k8s.io --as=system:serviceaccount:openshift-gitops:openshift-gitops-argocd-application-controller
 ```
 
+### DNSPolicy Not Creating DNS Records
+
+**Cause**: Incorrect Secret type or missing AWS credentials
+
+**Fix**:
+```bash
+# CRITICAL: Check Secret type (MUST be kuadrant.io/aws, NOT Opaque)
+oc get secret aws-credentials -n ingress-gateway -o jsonpath='{.type}'
+# Should output: kuadrant.io/aws
+
+# If type is wrong, delete and recreate via Job
+oc delete secret aws-credentials -n ingress-gateway
+oc delete job aws-credentials-setup -n openshift-gitops
+
+# Check DNSPolicy status
+oc get dnspolicy prod-web-dnspolicy -n ingress-gateway -o jsonpath='{.status.conditions}' | jq '.'
+
+# Check DNS Operator logs for provider errors
+oc logs -n openshift-operators deployment/dns-operator-controller-manager --tail=50 | grep -i "prod-web\|provider\|error"
+
+# Verify AWS region is set
+oc get secret aws-credentials -n ingress-gateway -o jsonpath='{.data.AWS_REGION}' | base64 -d
+```
+
+### Echo API Not Accessible from Internet
+
+**Cause**: DNS records not created or DNS propagation delay
+
+**Fix**:
+```bash
+# Check DNSPolicy is enforced
+oc get dnspolicy prod-web-dnspolicy -n ingress-gateway -o jsonpath='{.status.conditions}' | jq '.[] | select(.type=="Enforced")'
+# Should show: "status": "True", "message": "DNSPolicy has been successfully enforced"
+
+# Check DNS resolution
+HOSTNAME=$(oc get httproute echo-api -n echo-api -o jsonpath='{.spec.hostnames[0]}')
+dig +short $HOSTNAME
+# Should return Load Balancer hostname and IPs
+
+# Check Gateway Load Balancer address
+oc get gateway prod-web -n ingress-gateway -o jsonpath='{.status.addresses}'
+
+# Test HTTPS connectivity
+curl -v https://$HOSTNAME
+
+# Check TLS certificate
+echo | openssl s_client -connect $HOSTNAME:443 -servername $HOSTNAME 2>/dev/null | openssl x509 -noout -subject -issuer
+```
+
 ## Important Notes
 
 - **Completed Jobs are preserved**: No TTL cleanup - Jobs remain for audit/debugging
@@ -459,12 +582,15 @@ oc auth can-i create gateways.gateway.networking.k8s.io --as=system:serviceaccou
 - **Idempotent operations**: All Jobs use `oc apply` or `oc patch` making them safe to re-run
 - **Parent zone must be writable**: ACK needs permission to modify the public zone
 - **ServiceAccount**: All Jobs use `openshift-gitops-argocd-application-controller` (has cluster-admin + Gateway permissions)
-- **Fast execution**: DNS job ~45s, Gateway/HTTPRoute patch jobs ~5s each
-- **Parallel execution**: All Jobs can run simultaneously (no interdependencies)
+- **Fast execution**: AWS credentials job ~5s, DNS job ~45s, Gateway/HTTPRoute patch jobs ~5s each
+- **Parallel execution**: Jobs #1 and #2 can run in parallel, Jobs #3-4 are independent
 - **Static + Patch pattern**: Gateway and HTTPRoute are static YAML with placeholders, patched by Jobs
-- **Dynamic resources**: HostedZone and RecordSet are fully created by Job (no static YAML)
+- **Dynamic resources**: HostedZone, RecordSet, and AWS Secret are fully created by Jobs (no static YAML)
 - **File naming**: Follows convention `<namespace>-<kind>-<name>.yaml` (use `cluster-` prefix for cluster-scoped resources)
 - **ArgoCD drift**: ignoreDifferences configured to ignore hostname fields (managed by Jobs)
+- **CRITICAL - Secret type**: AWS credentials Secret MUST have type `kuadrant.io/aws` (not `Opaque`) for DNSPolicy to work
+- **DNSPolicy automation**: Automatically creates/updates DNS records in Route53 when Gateway Load Balancer changes
+- **Internet exposure**: DNSPolicy is what makes echo-api accessible from Internet (creates CNAME → Load Balancer)
 
 ## Related Projects
 
