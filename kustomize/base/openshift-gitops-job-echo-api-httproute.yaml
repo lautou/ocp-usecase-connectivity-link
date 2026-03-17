@@ -1,0 +1,72 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  annotations:
+    argocd.argoproj.io/sync-options: Force=true
+  name: echo-api-httproute-setup
+  namespace: openshift-gitops
+spec:
+  template:
+    metadata:
+      name: echo-api-httproute-setup
+    spec:
+      containers:
+        - command:
+            - /bin/bash
+            - -c
+            - |
+              #!/bin/bash
+              set -e
+
+              echo "========================================"
+              echo "Echo API HTTPRoute Dynamic Setup"
+              echo "========================================"
+
+              # Get cluster domain
+              echo ""
+              echo "[1/2] Getting cluster domain..."
+              BASE_DOMAIN=$(oc get dns cluster -o jsonpath='{.spec.baseDomain}')
+              HTTPROUTE_HOSTNAME="echo.globex.${BASE_DOMAIN}"
+
+              echo "✓ Cluster base domain: ${BASE_DOMAIN}"
+              echo "✓ HTTPRoute hostname: ${HTTPROUTE_HOSTNAME}"
+
+              # Create HTTPRoute
+              echo ""
+              echo "[2/2] Creating HTTPRoute echo-api..."
+
+              cat <<EOF | oc apply -f -
+              apiVersion: gateway.networking.k8s.io/v1
+              kind: HTTPRoute
+              metadata:
+                name: echo-api
+                namespace: echo-api
+              spec:
+                hostnames:
+                  - ${HTTPROUTE_HOSTNAME}
+                parentRefs:
+                  - name: prod-web
+                    namespace: ingress-gateway
+                rules:
+                  - backendRefs:
+                      - name: echo-api
+                        port: 8080
+              EOF
+
+              echo ""
+              echo "========================================"
+              echo "✅ HTTPRoute echo-api created successfully!"
+              echo "========================================"
+              echo ""
+              echo "📋 Summary:"
+              echo "  HTTPRoute: echo-api"
+              echo "  Namespace: echo-api"
+              echo "  Hostname: ${HTTPROUTE_HOSTNAME}"
+              echo "  Gateway: prod-web (ingress-gateway)"
+              echo "  Backend: echo-api:8080"
+              echo ""
+
+          image: registry.redhat.io/openshift4/ose-cli:latest
+          name: echo-api-httproute-setup
+      restartPolicy: OnFailure
+      serviceAccountName: openshift-gitops-argocd-application-controller

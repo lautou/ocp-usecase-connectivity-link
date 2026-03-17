@@ -19,5 +19,6 @@ resources:
   - ingress-gateway-tlspolicy-prod-web-tls-policy.yaml
 
   # openshift-gitops namespace resources (Jobs for dynamic configuration)
-  - openshift-gitops-job-globex-ns-delegation.yaml
+  - openshift-gitops-job-echo-api-httproute.yaml
   - openshift-gitops-job-gateway-prod-web.yaml
+  - openshift-gitops-job-globex-ns-delegation.yaml
