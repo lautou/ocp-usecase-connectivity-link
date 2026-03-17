@@ -19,7 +19,7 @@ Everything is managed via GitOps using ArgoCD with **100% dynamic configuration*
 4. **Istio Gateway** - HTTPS ingress gateway at `*.globex.<cluster-domain>`
 5. **TLS Certificates** - Automatic Let's Encrypt certificates via cert-manager
 6. **Authentication** - Kuadrant AuthPolicy with deny-by-default at Gateway level
-7. **Echo API Application** - Demo service (access blocked by default AuthPolicy)
+7. **Echo API Application** - Demo service with allow-all AuthPolicy
 
 ## Prerequisites
 
@@ -69,6 +69,7 @@ oc get recordset globex-ns-delegation -n ack-system
 
 # Check Policies
 oc get authpolicy prod-web-deny-all -n ingress-gateway
+oc get authpolicy echo-api -n echo-api
 oc get dnspolicy prod-web -n ingress-gateway
 oc get tlspolicy prod-web -n ingress-gateway
 oc get secret aws-credentials -n ingress-gateway
@@ -86,17 +87,15 @@ oc get service echo-api -n echo-api
 HOSTNAME=$(oc get httproute echo-api -n echo-api -o jsonpath='{.spec.hostnames[0]}')
 dig +short $HOSTNAME
 
-# Test echo-api endpoint from Internet (will return HTTP 403 due to deny-by-default AuthPolicy)
+# Test echo-api endpoint from Internet
 curl https://$HOSTNAME
 
-# Expected response with AuthPolicy deny-by-default:
-# {
-#   "error": "Forbidden",
-#   "message": "Access denied by default by the gateway operator..."
-# }
+# Expected response (HTTP 200 with echo-api allow-all AuthPolicy):
+# Request served by echo-api-...
+# HTTP headers and request information
 ```
 
-**Note**: The echo-api will return **HTTP 403 Forbidden** because of the deny-by-default AuthPolicy at the Gateway level. This is a security feature. See the "Troubleshooting" section to create an AuthPolicy that allows access.
+**Note**: The echo-api includes an allow-all AuthPolicy that overrides the Gateway's deny-by-default policy, so it should be accessible via HTTPS.
 
 ## Architecture
 
@@ -138,7 +137,8 @@ Runtime Execution:
 |-----------|------|---------|
 | **GatewayClass** | Static | Defines Istio as Gateway controller |
 | **Gateway** | Static + Patch | HTTPS ingress with wildcard hostname |
-| **AuthPolicy** | Static | Deny-by-default authentication at Gateway level |
+| **AuthPolicy (Gateway)** | Static | Deny-by-default authentication at Gateway level |
+| **AuthPolicy (echo-api)** | Static | Allow-all policy for echo-api HTTPRoute |
 | **TLSPolicy** | Static | Automatic TLS cert via cert-manager |
 | **DNSPolicy** | Static | Creates DNS records for Internet exposure |
 | **HTTPRoute** | Static + Patch | Routes traffic to echo-api service |
@@ -219,7 +219,7 @@ spec:
 - ✅ Defense in depth - even if HTTPRoute is created, no access without AuthPolicy
 - ✅ Clear error messages - developers know what to do
 
-**Important**: With this AuthPolicy active, `echo-api` will return HTTP 403 until you create a specific AuthPolicy for the HTTPRoute.
+**Implementation**: The `echo-api` application includes an allow-all AuthPolicy that overrides the Gateway's deny policy, making it accessible for demonstration purposes.
 
 ## Configuration
 
@@ -318,37 +318,20 @@ Everything else adapts to the cluster automatically.
 
 ## Troubleshooting
 
-### Echo API Returns HTTP 403 Forbidden (AuthPolicy)
+### Echo API Returns HTTP 403 Forbidden
 
-**This is expected behavior** - The Gateway has a deny-by-default AuthPolicy for security.
+**Cause**: The echo-api AuthPolicy may not be deployed or is misconfigured.
 
 ```bash
-# Verify AuthPolicy is active
-oc get authpolicy prod-web-deny-all -n ingress-gateway
+# Verify echo-api AuthPolicy exists
+oc get authpolicy echo-api -n echo-api
 
-# Create an AuthPolicy to allow access to echo-api
-cat <<EOF | oc apply -f -
-apiVersion: kuadrant.io/v1
-kind: AuthPolicy
-metadata:
-  name: echo-api-allow
-  namespace: echo-api
-spec:
-  targetRef:
-    kind: HTTPRoute
-    name: echo-api
-  rules:
-    authentication:
-      anonymous:
-        anonymous: {}
-    authorization:
-      allow-all:
-        opa:
-          rego: "allow = true"
-EOF
+# Check AuthPolicy status
+oc describe authpolicy echo-api -n echo-api
 
-# Test access again
-curl https://echo.globex.myocp.sandbox4993.opentlc.com
+# If missing, it should be deployed automatically by ArgoCD
+# Check ArgoCD sync status
+oc get application usecase-connectivity-link -n openshift-gitops
 ```
 
 ### DNS Not Resolving

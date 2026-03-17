@@ -54,7 +54,8 @@ This repository contains GitOps manifests for deploying Red Hat Connectivity Lin
    - **Deployment** (`echo-api-deployment-echo-api.yaml`) - 1 replica, image: `quay.io/3scale/authorino:echo-api`
    - **Service** (`echo-api-service-echo-api.yaml`) - ClusterIP exposing port 8080
    - **HTTPRoute** (`echo-api-httproute-echo-api.yaml`) - Static YAML with placeholder hostname: `echo.globex.placeholder`
-   - **Patched by Job** to use actual cluster domain
+   - **AuthPolicy** (`echo-api-authpolicy-echo-api.yaml`) - Allow-all policy for demonstration
+   - **Patched by Job** to use actual cluster domain (HTTPRoute only)
 
 9. **Jobs** (openshift-gitops namespace)
    - **Job #1: AWS Credentials Setup** (`openshift-gitops-job-aws-credentials.yaml`)
@@ -95,6 +96,7 @@ Kustomize Base
     ├── TLSPolicy (cert-manager integration)
     ├── DNSPolicy (Kuadrant DNS for Internet exposure)
     ├── HTTPRoute (static YAML with placeholder)
+    ├── AuthPolicy (allow-all for echo-api HTTPRoute)
     ├── Deployment + Service (echo-api)
     └── Jobs (create AWS credentials, patch hostnames, create DNS resources)
 
@@ -281,24 +283,25 @@ spec:
 - ✅ **Defense in depth**: Even if HTTPRoute exists, no access without auth
 - ✅ **Clear errors**: JSON message tells developers what to do
 
-**Important**: With this AuthPolicy active, **echo-api will return HTTP 403** until you create a specific AuthPolicy for the `echo-api` HTTPRoute in the `echo-api` namespace.
+**Implementation**: The project includes an allow-all AuthPolicy for echo-api (`echo-api-authpolicy-echo-api.yaml`) that overrides the Gateway deny-by-default, making the demo application accessible.
 
-**To allow access to echo-api**, create:
+**Echo API AuthPolicy** (included for demonstration):
 ```yaml
 apiVersion: kuadrant.io/v1
 kind: AuthPolicy
 metadata:
-  name: echo-api-allow
+  name: echo-api
   namespace: echo-api
 spec:
   targetRef:
+    group: gateway.networking.k8s.io
     kind: HTTPRoute
     name: echo-api
   rules:
-    authentication:
-      # Add your authentication rules here (e.g., API key, JWT, etc.)
     authorization:
-      # Add your authorization rules here
+      allow-all:
+        opa:
+          rego: "allow = true"  # Allow all traffic to echo-api
 ```
 
 ### Job Management
@@ -392,6 +395,7 @@ curl https://$HOSTNAME
 │   │   ├── cluster-gatewayclass-istio.yaml
 │   │   ├── cluster-ns-echo-api.yaml
 │   │   ├── cluster-ns-ingress-gateway.yaml
+│   │   ├── echo-api-authpolicy-echo-api.yaml
 │   │   ├── echo-api-deployment-echo-api.yaml
 │   │   ├── echo-api-httproute-echo-api.yaml
 │   │   ├── echo-api-service-echo-api.yaml
@@ -632,58 +636,23 @@ oc get secret aws-credentials -n ingress-gateway -o jsonpath='{.data.AWS_REGION}
 
 ### Echo API Returns HTTP 403 Forbidden
 
-**Cause**: AuthPolicy deny-by-default is blocking access
+**Cause**: The echo-api AuthPolicy may not be deployed or is misconfigured
 
-**Expected Behavior**: This is NORMAL with the current configuration. The Gateway has an AuthPolicy that denies all traffic by default.
+**Expected Behavior**: echo-api should return HTTP 200 because it has an allow-all AuthPolicy (`echo-api-authpolicy-echo-api.yaml`) that overrides the Gateway deny-by-default.
 
-**Response**:
-```json
-{
-  "error": "Forbidden",
-  "message": "Access denied by default by the gateway operator. If you are the administrator of the service, create a specific auth policy for the route."
-}
-```
-
-**Fix (to allow access)**:
+**Fix**:
 ```bash
-# Create an AuthPolicy for the echo-api HTTPRoute
-cat <<EOF | oc apply -f -
-apiVersion: kuadrant.io/v1
-kind: AuthPolicy
-metadata:
-  name: echo-api-allow
-  namespace: echo-api
-spec:
-  targetRef:
-    kind: HTTPRoute
-    name: echo-api
-  rules:
-    authentication:
-      anonymous:
-        anonymous: {}
-    authorization:
-      allow-all:
-        opa:
-          rego: "allow = true"
-EOF
+# Verify echo-api AuthPolicy exists
+oc get authpolicy echo-api -n echo-api
 
-# Verify AuthPolicy is enforced
-oc get authpolicy echo-api-allow -n echo-api -o jsonpath='{.status.conditions}' | jq '.'
+# Check AuthPolicy status
+oc describe authpolicy echo-api -n echo-api
 
-# Test access
-curl https://echo.globex.myocp.sandbox4993.opentlc.com
-```
+# If missing, check ArgoCD sync status
+oc get application usecase-connectivity-link -n openshift-gitops
 
-**Check AuthPolicy status**:
-```bash
-# Check Gateway-level AuthPolicy
+# Check Gateway-level AuthPolicy (should exist)
 oc get authpolicy prod-web-deny-all -n ingress-gateway -o yaml
-
-# Check if HTTPRoute has AuthPolicy
-oc get authpolicy -n echo-api
-
-# Check Gateway status for AuthPolicy
-oc get gateway prod-web -n ingress-gateway -o jsonpath='{.status.conditions}' | jq '.[] | select(.type | contains("AuthPolicy"))'
 ```
 
 ### Echo API Not Accessible from Internet (After Allowing Auth)
@@ -728,8 +697,9 @@ echo | openssl s_client -connect $HOSTNAME:443 -servername $HOSTNAME 2>/dev/null
 - **DNSPolicy automation**: Automatically creates/updates DNS records in Route53 when Gateway Load Balancer changes
 - **Internet exposure**: DNSPolicy is what makes echo-api accessible from Internet (creates CNAME → Load Balancer)
 - **CRITICAL - AuthPolicy deny-by-default**: Gateway has AuthPolicy that blocks all traffic by default (HTTP 403)
-- **Access control**: Each HTTPRoute MUST have its own AuthPolicy to allow access (echo-api is blocked by default)
+- **Access control**: Each HTTPRoute MUST have its own AuthPolicy to allow access
 - **Security pattern**: Deny-by-default prevents accidental exposure of services
+- **Echo API access**: Includes allow-all AuthPolicy (`echo-api-authpolicy-echo-api.yaml`) for demonstration
 
 ## Related Projects
 
@@ -746,7 +716,6 @@ Potential improvements:
 - [ ] Create a cleanup Job for decommissioning (delete HTTPRoute, RecordSet, Gateway, HostedZone)
 - [ ] Add Prometheus metrics for DNS delegation and Gateway status
 - [ ] Support multiple subdomains/Gateways with templating
-- [ ] Add more demo applications with different HTTPRoutes
-- [ ] Add AuthPolicy for authentication/authorization
+- [ ] Add more demo applications with different HTTPRoutes and AuthPolicies
 - [ ] Add RateLimitPolicy for API rate limiting
 - [ ] Add tests with pre-commit hooks
