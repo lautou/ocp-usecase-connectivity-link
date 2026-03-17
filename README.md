@@ -1,34 +1,38 @@
 # OpenShift Use Case - Red Hat Connectivity Link
 
-GitOps repository for automating Red Hat Connectivity Link DNS infrastructure on OpenShift using AWS Route53 and ACK.
+GitOps repository for automating Red Hat Connectivity Link infrastructure on OpenShift using AWS Route53, ACK, Istio Gateway API, and Kuadrant.
 
 ## Overview
 
-This project automates the creation and delegation of a Route53 hosted zone for the Red Hat Connectivity Link use case. It uses:
+This project automates the deployment of:
+- **DNS infrastructure** (Route53 hosted zone with delegation)
+- **Istio Gateway** with automated TLS certificates
+- **Demo application** (echo-api) to validate the setup
 
-- **AWS Controllers for Kubernetes (ACK)** for Route53 management
-- **Kustomize** for manifest templating
-- **ArgoCD** for GitOps deployment
-- **100% dynamic configuration** - no hardcoded values
+Everything is managed via GitOps using ArgoCD with **100% dynamic configuration** - works across different OpenShift clusters without modification.
 
-## What It Does
+## What It Deploys
 
-1. **Creates a Route53 HostedZone** for `globex.<your-cluster-domain>` using ACK
-2. **Creates an Istio Gateway** for `*.globex.<your-cluster-domain>` with TLS
-3. **Automatically extracts** nameservers from the created zone
-4. **Dynamically fetches** parent zone information from cluster configuration
-5. **Creates NS delegation records** in the parent zone automatically
-6. **Manages everything via GitOps** - changes in Git trigger updates
+1. **Route53 HostedZone** - Creates `globex.<cluster-domain>` DNS zone
+2. **NS Delegation** - Automatically configures delegation in parent zone
+3. **Istio Gateway** - HTTPS ingress gateway at `*.globex.<cluster-domain>`
+4. **TLS Certificates** - Automatic Let's Encrypt certificates via cert-manager
+5. **Echo API Application** - Demo service accessible at `https://echo.globex.<cluster-domain>`
 
 ## Prerequisites
 
+### Required Operators
+- **OpenShift GitOps** (ArgoCD)
+- **ACK Route53 controller** (in `ack-system` namespace)
+- **OpenShift Service Mesh** (Istio with Gateway API support)
+- **cert-manager**
+- **Kuadrant Operator**
+
+### Required Configuration
 - OpenShift cluster running on AWS
-- **OpenShift GitOps** (ArgoCD) installed
-- **ACK Route53 controller** installed and configured in `ack-system` namespace
-- **OpenShift Service Mesh** (Istio) installed with Gateway API support
-- **cert-manager** installed (for TLS certificate management)
-- **Kuadrant Operator** installed (for TLSPolicy)
-- AWS credentials available in cluster (`kube-system/aws-creds`)
+- AWS credentials in `kube-system/aws-creds`
+- cert-manager ClusterIssuer named `cluster` (configured for Let's Encrypt)
+- Parent Route53 zone must exist and be writable
 
 ## Quick Start
 
@@ -38,231 +42,326 @@ This project automates the creation and delegation of a Route53 hosted zone for 
 oc apply -f argocd/application.yaml
 ```
 
+### Monitor
+
+```bash
+# Watch Application status
+oc get application usecase-connectivity-link -n openshift-gitops -w
+
+# Check all Jobs
+oc get job -n openshift-gitops | grep -E "globex-ns-delegation|gateway-prod-web|echo-api-httproute"
+
+# View Job logs
+oc logs -n openshift-gitops job/globex-ns-delegation
+oc logs -n openshift-gitops job/gateway-prod-web-setup
+oc logs -n openshift-gitops job/echo-api-httproute-setup
+```
+
 ### Verify
 
 ```bash
-# Check Application status
-oc get application usecase-connectivity-link -n openshift-gitops
-
-# Check HostedZone
+# Check DNS resources
 oc get hostedzone globex -n ack-system
-
-# Check Gateway
-oc get gateway prod-web -n ingress-gateway
-
-# Check NS delegation RecordSet
 oc get recordset globex-ns-delegation -n ack-system
 
-# Check TLSPolicy
-oc get tlspolicy prod-web-tls-policy -n ingress-gateway
+# Check Gateway resources
+oc get gateway prod-web -n ingress-gateway
+oc get httproute echo-api -n echo-api
+oc get certificate -n ingress-gateway
 
-# Test DNS resolution (may take 5-10 minutes for propagation)
-dig NS globex.myocp.sandbox4993.opentlc.com +short
-```
+# Check echo-api application
+oc get deployment echo-api -n echo-api
+oc get service echo-api -n echo-api
 
-### Check Job Logs
+# Test DNS resolution (wait 5-10 min for propagation)
+DOMAIN=$(oc get hostedzone globex -n ack-system -o jsonpath='{.spec.name}')
+dig NS $DOMAIN +short
 
-```bash
-# DNS Job logs
-oc logs -n openshift-gitops -l job-name=globex-ns-delegation
-
-# Gateway Job logs
-oc logs -n openshift-gitops -l job-name=gateway-prod-web-setup
+# Test echo-api endpoint
+HOSTNAME=$(oc get httproute echo-api -n echo-api -o jsonpath='{.spec.hostnames[0]}')
+curl https://$HOSTNAME
 ```
 
 ## Architecture
 
+### Component Flow
+
 ```
-┌─────────────────────────────────────────────────────────────┐
-│ ArgoCD Application (openshift-gitops)                       │
-│  └─ Syncs from: github.com/lautou/ocp-usecase-connectivity-link │
-└───────────────────────┬─────────────────────────────────────┘
-                        │
-                        ▼
-┌─────────────────────────────────────────────────────────────┐
-│ Kustomize (overlays/default)                                │
-│  ├─ GatewayClass (istio)                                    │
-│  ├─ Namespace (ingress-gateway)                             │
-│  ├─ TLSPolicy → Manages TLS certs via cert-manager         │
-│  ├─ Job #1 → Dynamic DNS setup (HostedZone + RecordSet)    │
-│  └─ Job #2 → Dynamic Gateway setup                          │
-└───────┬───────────────────────────┬─────────────────────────┘
-        │                           │
-        ▼                           ▼
-┌───────────────────┐   ┌───────────────────────────────────┐
-│ Job #1: DNS       │   │ Job #2: Gateway                   │
-│ (openshift-gitops)│   │ (openshift-gitops namespace)      │
-│                   │   │                                   │
-│ 1. Get domain     │   │ 1. Get cluster domain            │
-│ 2. Create         │   │ 2. Create Gateway CR             │
-│    HostedZone     │   │    (*.globex.<domain>)           │
-│ 3. Wait ready     │   │                                   │
-│ 4. Extract NS     │   │ Creates:                         │
-│ 5. Get parent zone│   │ - Gateway in ingress-gateway     │
-│ 6. Create         │   │                                   │
-│    RecordSet      │   │                                   │
-└───────────────────┘   └───────────────────────────────────┘
-        │                           │
-        │                           │
-        └───────────┬───────────────┘
-                    ▼
-┌─────────────────────────────────────────────────────────────┐
-│ AWS Route53                                                 │
-│                                                             │
-│ Parent Zone: myocp.sandbox4993.opentlc.com                 │
-│  └─ NS Record: globex.myocp.sandbox4993.opentlc.com       │
-│      └─ Points to: ns-451.awsdns-56.com, ...              │
-│                                                             │
-│ Subdomain Zone: globex.myocp.sandbox4993.opentlc.com      │
-│  └─ Managed by ACK                                         │
-└─────────────────────────────────────────────────────────────┘
+ArgoCD Application
+    ↓
+Kustomize (overlays/default)
+    ↓
+Static Resources (Git)
+    ├─ Namespaces (echo-api, ingress-gateway)
+    ├─ RBAC (ClusterRole + ClusterRoleBinding)
+    ├─ GatewayClass (istio)
+    ├─ Gateway (with placeholder hostname)
+    ├─ TLSPolicy (cert-manager integration)
+    ├─ HTTPRoute (with placeholder hostname)
+    ├─ Deployment + Service (echo-api app)
+    └─ Jobs (3)
+        ├─ Job #1: Create HostedZone + RecordSet
+        ├─ Job #2: Patch Gateway hostname
+        └─ Job #3: Patch HTTPRoute hostname
+
+Runtime Execution:
+    Job #1 → Creates HostedZone + RecordSet in AWS Route53
+    Job #2 → Patches Gateway: *.globex.placeholder → *.globex.<cluster-domain>
+    Job #3 → Patches HTTPRoute: echo.globex.placeholder → echo.globex.<cluster-domain>
+    TLSPolicy → Triggers cert-manager to create Let's Encrypt certificate
 ```
 
-## How It Works
+### Key Components
 
-### 1. Dynamic DNS Infrastructure (Job #1)
+| Component | Type | Purpose |
+|-----------|------|---------|
+| **GatewayClass** | Static | Defines Istio as Gateway controller |
+| **Gateway** | Static + Patch | HTTPS ingress with wildcard hostname |
+| **TLSPolicy** | Static | Automatic TLS cert via cert-manager |
+| **HTTPRoute** | Static + Patch | Routes traffic to echo-api service |
+| **Deployment** | Static | echo-api application (1 replica) |
+| **Service** | Static | ClusterIP service for echo-api |
+| **HostedZone** | Dynamic | Route53 zone for globex subdomain |
+| **RecordSet** | Dynamic | NS delegation in parent zone |
 
-A Kubernetes Job creates the entire DNS infrastructure dynamically:
+### Pattern: Static YAML + Job Patches
 
-1. Gets cluster base domain from `dns.config.openshift.io/cluster`
-2. Creates HostedZone CR for `globex.<cluster-domain>`
-3. Waits for ACK Route53 controller to provision the zone in AWS
-4. Extracts nameservers from HostedZone status
-5. Gets parent zone ID from cluster DNS configuration
-6. Creates RecordSet CR for NS delegation in parent zone
+**Problem**: Resources need cluster-specific values (hostnames) that can't be hardcoded.
 
-### 2. Dynamic Gateway Setup (Job #2)
+**Solution**: Store resources as static YAML in Git with placeholders, patch them at runtime.
 
-A second Job creates the Istio Gateway:
+**Example**:
 
-1. Gets cluster base domain
-2. Creates Gateway CR with hostname `*.globex.<cluster-domain>`
-3. Configures TLS with certificate reference
+Static YAML (reviewable in Git):
+```yaml
+kind: Gateway
+spec:
+  listeners:
+    - hostname: "*.globex.placeholder"
+```
 
-The TLSPolicy automatically provisions certificates via cert-manager.
+Job patches at runtime:
+```bash
+BASE_DOMAIN=$(oc get dns cluster -o jsonpath='{.spec.baseDomain}')
+oc patch gateway prod-web --type=json -p='[
+  {"op": "replace", "path": "/spec/listeners/0/hostname",
+   "value": "*.globex.'${BASE_DOMAIN}'"}
+]'
+```
 
-### 3. GitOps Management
+Result:
+```yaml
+kind: Gateway
+spec:
+  listeners:
+    - hostname: "*.globex.myocp.sandbox4993.opentlc.com"
+```
 
-All resources are managed via Git:
-- Modify manifests in this repository
-- ArgoCD automatically syncs changes to the cluster
-- Jobs re-run to update configuration if needed
+**Benefits**:
+- ✅ YAML visible and reviewable in Git
+- ✅ Simple Jobs (3-line patches)
+- ✅ Works across all clusters
+- ✅ No ArgoCD drift (ignoreDifferences configured)
 
 ## Configuration
 
-The system is **fully dynamic** and extracts all necessary information from the cluster:
+### Dynamic Values (extracted from cluster)
+
+All configuration is cluster-aware:
 
 | Value | Source | Example |
 |-------|--------|---------|
-| Cluster base domain | `dns.config.openshift.io/cluster` | myocp.sandbox4993.opentlc.com |
-| Parent zone ID | `dns.config.openshift.io/cluster` | Z044356419CQ6A6BXXDV3 |
-| Nameservers | HostedZone status (after creation) | ns-451.awsdns-56.com, ... |
-| Gateway hostname | Computed from cluster domain | *.globex.myocp.sandbox4993.opentlc.com |
+| Cluster domain | `dns.config.openshift.io/cluster` | `myocp.sandbox4993.opentlc.com` |
+| Parent zone ID | `dns.config.openshift.io/cluster` | `Z044356419CQ6A6BXXDV3` |
+| Gateway hostname | Computed | `*.globex.myocp.sandbox4993.opentlc.com` |
+| HTTPRoute hostname | Computed | `echo.globex.myocp.sandbox4993.opentlc.com` |
 
-**Only hardcoded value**: `"globex"` (subdomain name)
-Everything else is 100% dynamic → Works on any OpenShift cluster on AWS!
+### Hardcoded Values
 
-**Note**: The parent zone ID must point to the root public zone (e.g., sandbox4993.opentlc.com), following the same pattern as connectivity-link-ansible.
+Only two values are hardcoded:
+- `"globex"` - subdomain name
+- `"echo.globex"` - HTTPRoute hostname prefix
+
+Everything else adapts to the cluster automatically.
 
 ## Repository Structure
 
 ```
 .
+├── argocd/
+│   └── application.yaml                        # ArgoCD Application
 ├── kustomize/
 │   ├── base/
-│   │   ├── cluster-gatewayclass-istio.yaml                      # GatewayClass (cluster-scoped)
-│   │   ├── cluster-ns-ingress-gateway.yaml                      # Namespace for Gateway
-│   │   ├── ingress-gateway-tlspolicy-prod-web-tls-policy.yaml   # TLSPolicy for cert-manager
-│   │   ├── openshift-gitops-job-globex-ns-delegation.yaml       # Job: DNS setup (HostedZone + RecordSet)
-│   │   ├── openshift-gitops-job-gateway-prod-web.yaml           # Job: Gateway setup
-│   │   └── kustomization.yaml                                   # Base Kustomize config
+│   │   ├── cluster-*                           # Cluster-scoped resources
+│   │   ├── echo-api-*                          # echo-api namespace resources
+│   │   ├── ingress-gateway-*                   # ingress-gateway namespace
+│   │   ├── openshift-gitops-job-*              # Jobs (3)
+│   │   └── kustomization.yaml
 │   └── overlays/
 │       └── default/
-│           └── kustomization.yaml   # Default overlay
-├── argocd/
-│   └── application.yaml             # ArgoCD Application
-├── CLAUDE.md                        # Developer documentation
-├── README.md                        # This file
-└── .gitignore
+│           └── kustomization.yaml
+├── CLAUDE.md                                    # Developer documentation
+└── README.md                                    # This file
 ```
+
+**File naming**: `<namespace>-<kind>-<name>.yaml` (or `cluster-<kind>-<name>.yaml` for cluster-scoped)
+
+## Jobs
+
+### Job #1: DNS Setup (globex-ns-delegation)
+
+**Duration**: ~45 seconds
+
+**Steps**:
+1. Get cluster domain
+2. Create HostedZone for `globex.<cluster-domain>`
+3. Wait for HostedZone to be ready (ACK controller provisions in AWS)
+4. Extract nameservers from HostedZone status
+5. Get parent zone ID from cluster config
+6. Create RecordSet for NS delegation
+
+**Creates**:
+- HostedZone `globex` in `ack-system` namespace
+- RecordSet `globex-ns-delegation` in `ack-system` namespace
+
+### Job #2: Gateway Patch (gateway-prod-web-setup)
+
+**Duration**: ~5 seconds
+
+**Steps**:
+1. Get cluster domain
+2. Patch Gateway hostname from placeholder to `*.globex.<cluster-domain>`
+
+**Patches**: Gateway `prod-web` in `ingress-gateway` namespace
+
+### Job #3: HTTPRoute Patch (echo-api-httproute-setup)
+
+**Duration**: ~5 seconds
+
+**Steps**:
+1. Get cluster domain
+2. Patch HTTPRoute hostname from placeholder to `echo.globex.<cluster-domain>`
+
+**Patches**: HTTPRoute `echo-api` in `echo-api` namespace
 
 ## Troubleshooting
 
-### Job Fails with "Timeout waiting for HostedZone"
-
-The HostedZone creation may be slow or failed.
+### DNS Not Resolving
 
 ```bash
 # Check HostedZone status
 oc get hostedzone globex -n ack-system -o yaml
 
-# Check ACK controller logs
-oc logs -n ack-system deployment/ack-route53-controller
+# Check RecordSet status
+oc get recordset globex-ns-delegation -n ack-system -o yaml
+
+# Wait 5-10 minutes for DNS propagation
+# Test with authoritative nameserver
+dig @$(dig NS globex.myocp.sandbox4993.opentlc.com +short | head -1) \
+  globex.myocp.sandbox4993.opentlc.com SOA
 ```
 
-### RecordSet Not Created
-
-Check the Job logs for errors:
+### Gateway Hostname Still Shows Placeholder
 
 ```bash
-oc logs -n openshift-gitops -l job-name=globex-ns-delegation
+# Check if Job completed
+oc get job gateway-prod-web-setup -n openshift-gitops
+
+# View Job logs
+oc logs -n openshift-gitops job/gateway-prod-web-setup
+
+# Manually re-trigger Job
+oc delete job gateway-prod-web-setup -n openshift-gitops
+# ArgoCD will recreate it automatically
 ```
 
-### DNS Not Resolving
-
-DNS propagation can take 5-10 minutes. Test with authoritative nameserver directly:
+### TLS Certificate Not Created
 
 ```bash
-# Get nameservers
-NAMESERVERS=$(oc get hostedzone globex -n ack-system -o jsonpath='{.status.delegationSet.nameServers[*]}')
-
-# Test directly
-dig @<nameserver> globex.myocp.sandbox4993.opentlc.com SOA
-```
-
-### Gateway Not Created
-
-Check the Gateway setup Job logs:
-
-```bash
-oc logs -n openshift-gitops -l job-name=gateway-prod-web-setup
-```
-
-### TLS Certificate Issues
-
-Check cert-manager and TLSPolicy:
-
-```bash
-# Check ClusterIssuer
-oc get clusterissuer cluster
-
-# Check Certificate status
-oc get certificate -n ingress-gateway
-
 # Check TLSPolicy status
 oc get tlspolicy prod-web-tls-policy -n ingress-gateway -o yaml
+
+# Check Certificate
+oc get certificate -n ingress-gateway
+
+# Check cert-manager logs
+oc logs -n cert-manager deployment/cert-manager
+
+# Verify ClusterIssuer exists
+oc get clusterissuer cluster
+```
+
+### Echo API Not Responding
+
+```bash
+# Check Deployment
+oc get deployment echo-api -n echo-api
+oc get pods -n echo-api
+
+# Check Service
+oc get service echo-api -n echo-api
+
+# Check HTTPRoute
+oc get httproute echo-api -n echo-api -o yaml
+
+# Check Gateway status
+oc get gateway prod-web -n ingress-gateway -o yaml
+
+# Test from within cluster
+oc run -it --rm debug --image=curlimages/curl --restart=Never -- \
+  curl http://echo-api.echo-api.svc.cluster.local:8080
 ```
 
 ### Force Resync
 
 ```bash
 # Delete Jobs to force re-run
-oc delete job globex-ns-delegation gateway-prod-web-setup -n openshift-gitops
+oc delete job globex-ns-delegation gateway-prod-web-setup echo-api-httproute-setup \
+  -n openshift-gitops
 
 # Trigger ArgoCD sync
 oc annotate application usecase-connectivity-link -n openshift-gitops \
   argocd.argoproj.io/refresh=hard --overwrite
 ```
 
-## Development
+## Advanced
 
-For detailed developer documentation, see [CLAUDE.md](./CLAUDE.md).
+### ArgoCD ignoreDifferences
+
+The Application configures ArgoCD to ignore hostname fields that are managed by Jobs:
+
+```yaml
+ignoreDifferences:
+  - group: gateway.networking.k8s.io
+    kind: Gateway
+    jsonPointers:
+      - /spec/listeners/0/hostname
+  - group: gateway.networking.k8s.io
+    kind: HTTPRoute
+    jsonPointers:
+      - /spec/hostnames
+```
+
+This prevents ArgoCD from detecting hostname changes as drift.
+
+### RBAC for Jobs
+
+Jobs run with ServiceAccount `openshift-gitops-argocd-application-controller` which has:
+- Cluster-admin permissions (from ArgoCD installation)
+- Additional Gateway API permissions via ClusterRole `gateway-manager`
+
+### RecordSet Naming
+
+RecordSet uses **relative domain format** to avoid duplication:
+- ❌ FQDN: `globex.myocp.sandbox4993.opentlc.com` → AWS creates `globex.myocp.sandbox4993.opentlc.com.sandbox4993.opentlc.com`
+- ✅ Relative: `globex.myocp` → AWS creates `globex.myocp.sandbox4993.opentlc.com`
 
 ## Related Projects
 
-- [connectivity-link-ansible](https://github.com/rh-soln-pattern-connectivity-link/connectivity-link-ansible) - Original Ansible-based approach
-- [ocp-open-env-install-tool](https://github.com/lautou/ocp-open-env-install-tool) - Pattern inspiration for dynamic configuration
+- [ocp-open-env-install-tool](https://github.com/lautou/ocp-open-env-install-tool) - Pattern inspiration
+- [connectivity-link-ansible](https://github.com/rh-soln-pattern-connectivity-link/connectivity-link-ansible) - Original Ansible approach
+- [cl-install-helm](https://github.com/rh-soln-pattern-connectivity-link/cl-install-helm) - Helm chart for echo-api
 
-## License
+## Contributing
 
-This project is part of the Red Hat Connectivity Link solution pattern.
+See [CLAUDE.md](CLAUDE.md) for developer documentation and architecture details.
