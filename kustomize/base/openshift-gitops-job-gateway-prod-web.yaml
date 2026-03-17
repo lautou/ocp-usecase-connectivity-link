@@ -19,62 +19,35 @@ spec:
               set -e
 
               echo "========================================"
-              echo "Gateway prod-web Dynamic Setup"
+              echo "Gateway prod-web Hostname Patch"
               echo "========================================"
 
               # Get cluster domain
               echo ""
               echo "[1/2] Getting cluster domain..."
               BASE_DOMAIN=$(oc get dns cluster -o jsonpath='{.spec.baseDomain}')
-              SUBDOMAIN_NAME="globex"
-              GATEWAY_HOSTNAME="*.${SUBDOMAIN_NAME}.${BASE_DOMAIN}"
+              GATEWAY_HOSTNAME="*.globex.${BASE_DOMAIN}"
 
               echo "✓ Cluster base domain: ${BASE_DOMAIN}"
-              echo "✓ Gateway hostname: ${GATEWAY_HOSTNAME}"
+              echo "✓ Target hostname: ${GATEWAY_HOSTNAME}"
 
-              # Create Gateway
+              # Patch Gateway hostname
               echo ""
-              echo "[2/2] Creating Gateway prod-web..."
+              echo "[2/2] Patching Gateway hostname..."
 
-              cat <<EOF | oc apply -f -
-              apiVersion: gateway.networking.k8s.io/v1
-              kind: Gateway
-              metadata:
-                name: prod-web
-                namespace: ingress-gateway
-                labels:
-                  istio.io/rev: openshift-gateway
-                  app.kubernetes.io/part-of: connectivity-link
-                  argocd.argoproj.io/managed-by: openshift-gitops
-              spec:
-                gatewayClassName: istio
-                listeners:
-                  - allowedRoutes:
-                      namespaces:
-                        from: All
-                    hostname: '${GATEWAY_HOSTNAME}'
-                    name: api
-                    port: 443
-                    protocol: HTTPS
-                    tls:
-                      certificateRefs:
-                        - group: ''
-                          kind: Secret
-                          name: api-tls
-                      mode: Terminate
-              EOF
+              oc patch gateway prod-web -n ingress-gateway --type=json -p="[
+                {\"op\": \"replace\", \"path\": \"/spec/listeners/0/hostname\", \"value\": \"${GATEWAY_HOSTNAME}\"}
+              ]"
 
               echo ""
               echo "========================================"
-              echo "✅ Gateway prod-web created successfully!"
+              echo "✅ Gateway hostname updated successfully!"
               echo "========================================"
               echo ""
               echo "📋 Summary:"
               echo "  Gateway: prod-web"
               echo "  Namespace: ingress-gateway"
               echo "  Hostname: ${GATEWAY_HOSTNAME}"
-              echo "  GatewayClass: istio"
-              echo "  Listener: api (HTTPS:443)"
               echo ""
 
           image: registry.redhat.io/openshift4/ose-cli:latest

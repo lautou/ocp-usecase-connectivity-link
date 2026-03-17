@@ -13,9 +13,11 @@ resources:
 
   # echo-api namespace resources
   - echo-api-deployment-echo-api.yaml
+  - echo-api-httproute-echo-api.yaml
   - echo-api-service-echo-api.yaml
 
   # ingress-gateway namespace resources
+  - ingress-gateway-gateway-prod-web.yaml
   - ingress-gateway-tlspolicy-prod-web-tls-policy.yaml
 
   # openshift-gitops namespace resources (Jobs for dynamic configuration)

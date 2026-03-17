@@ -1,0 +1,27 @@
+apiVersion: gateway.networking.k8s.io/v1
+kind: Gateway
+metadata:
+  name: prod-web
+  namespace: ingress-gateway
+  annotations:
+    rhcl.io/hostname-template: "*.globex.{baseDomain}"
+  labels:
+    app.kubernetes.io/part-of: connectivity-link
+    argocd.argoproj.io/managed-by: openshift-gitops
+    istio.io/rev: openshift-gateway
+spec:
+  gatewayClassName: istio
+  listeners:
+    - allowedRoutes:
+        namespaces:
+          from: All
+      hostname: "*.globex.placeholder"
+      name: api
+      port: 443
+      protocol: HTTPS
+      tls:
+        certificateRefs:
+          - group: ""
+            kind: Secret
+            name: api-tls
+        mode: Terminate
