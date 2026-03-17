@@ -15,6 +15,7 @@ resources:
   - echo-api-authpolicy-echo-api.yaml
   - echo-api-deployment-echo-api.yaml
   - echo-api-httproute-echo-api.yaml
+  - echo-api-ratelimitpolicy-echo-api-rlp.yaml
   - echo-api-service-echo-api.yaml
 
   # ingress-gateway namespace resources

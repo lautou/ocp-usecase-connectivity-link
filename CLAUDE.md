@@ -61,6 +61,7 @@ This repository contains GitOps manifests for deploying Red Hat Connectivity Lin
    - **Service** (`echo-api-service-echo-api.yaml`) - ClusterIP exposing port 8080
    - **HTTPRoute** (`echo-api-httproute-echo-api.yaml`) - Static YAML with placeholder hostname: `echo.globex.placeholder`
    - **AuthPolicy** (`echo-api-authpolicy-echo-api.yaml`) - Allow-all policy for demonstration
+   - **RateLimitPolicy** (`echo-api-ratelimitpolicy-echo-api-rlp.yaml`) - HTTPRoute-level rate limit (10 req/12s), overrides Gateway default
    - **Patched by Job** to use actual cluster domain (HTTPRoute only)
 
 10. **Jobs** (openshift-gitops namespace)
@@ -104,6 +105,7 @@ Kustomize Base
     ├── RateLimitPolicy (rate limiting at Gateway level)
     ├── HTTPRoute (static YAML with placeholder)
     ├── AuthPolicy (allow-all for echo-api HTTPRoute)
+    ├── RateLimitPolicy (HTTPRoute-level for echo-api, overrides Gateway default)
     ├── Deployment + Service (echo-api)
     └── Jobs (create AWS credentials, patch hostnames, create DNS resources)
 
@@ -405,6 +407,7 @@ curl https://$HOSTNAME
 │   │   ├── echo-api-authpolicy-echo-api.yaml
 │   │   ├── echo-api-deployment-echo-api.yaml
 │   │   ├── echo-api-httproute-echo-api.yaml
+│   │   ├── echo-api-ratelimitpolicy-echo-api-rlp.yaml
 │   │   ├── echo-api-service-echo-api.yaml
 │   │   ├── ingress-gateway-authpolicy-prod-web-deny-all.yaml
 │   │   ├── ingress-gateway-dnspolicy-prod-web.yaml

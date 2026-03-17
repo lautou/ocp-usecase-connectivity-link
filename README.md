@@ -20,7 +20,7 @@ Everything is managed via GitOps using ArgoCD with **100% dynamic configuration*
 5. **TLS Certificates** - Automatic Let's Encrypt certificates via cert-manager
 6. **Authentication** - Kuadrant AuthPolicy with deny-by-default at Gateway level
 7. **Rate Limiting** - Kuadrant RateLimitPolicy at Gateway level (5 req/10s)
-8. **Echo API Application** - Demo service with allow-all AuthPolicy
+8. **Echo API Application** - Demo service with allow-all AuthPolicy and HTTPRoute-level RateLimitPolicy (10 req/12s)
 
 ## Prerequisites
 
@@ -73,6 +73,7 @@ oc get authpolicy prod-web-deny-all -n ingress-gateway
 oc get authpolicy echo-api -n echo-api
 oc get dnspolicy prod-web -n ingress-gateway
 oc get ratelimitpolicy prod-web -n ingress-gateway
+oc get ratelimitpolicy echo-api-rlp -n echo-api
 oc get tlspolicy prod-web -n ingress-gateway
 oc get secret aws-credentials -n ingress-gateway
 
@@ -141,9 +142,10 @@ Runtime Execution:
 | **Gateway** | Static + Patch | HTTPS ingress with wildcard hostname |
 | **AuthPolicy (Gateway)** | Static | Deny-by-default authentication at Gateway level |
 | **AuthPolicy (echo-api)** | Static | Allow-all policy for echo-api HTTPRoute |
+| **RateLimitPolicy (echo-api)** | Static | HTTPRoute-level rate limit (10 req/12s), overrides Gateway default |
 | **TLSPolicy** | Static | Automatic TLS cert via cert-manager |
 | **DNSPolicy** | Static | Creates DNS records for Internet exposure |
-| **RateLimitPolicy** | Static | Rate limiting at Gateway level (5 req/10s) |
+| **RateLimitPolicy (Gateway)** | Static | Rate limiting at Gateway level (5 req/10s) |
 | **HTTPRoute** | Static + Patch | Routes traffic to echo-api service |
 | **Deployment** | Static | echo-api application (1 replica) |
 | **Service** | Static | ClusterIP service for echo-api |
