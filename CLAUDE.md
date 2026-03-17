@@ -31,13 +31,13 @@ This repository contains GitOps manifests for deploying Red Hat Connectivity Lin
    - References TLS certificate Secret `api-tls` (managed by TLSPolicy)
    - **Patched by Job** to use actual cluster domain
 
-5. **TLSPolicy** (`ingress-gateway-tlspolicy-prod-web-tls-policy.yaml`)
+5. **TLSPolicy** (`ingress-gateway-tlspolicy-prod-web.yaml`)
    - Kuadrant TLSPolicy for automatic certificate management
    - References ClusterIssuer named `cluster` (cert-manager)
    - Targets the Gateway `prod-web`
    - Automatically creates Let's Encrypt certificate in Secret `api-tls`
 
-6. **DNSPolicy** (`ingress-gateway-dnspolicy-prod-web-dnspolicy.yaml`)
+6. **DNSPolicy** (`ingress-gateway-dnspolicy-prod-web.yaml`)
    - Kuadrant DNSPolicy for automatic DNS record management in Route53
    - References Secret `aws-credentials` (type: `kuadrant.io/aws`)
    - Targets the Gateway `prod-web`
@@ -256,11 +256,11 @@ oc get job -n openshift-gitops | grep -E "aws-credentials|globex-ns-delegation|g
 # Check resources
 oc get hostedzone globex -n ack-system
 oc get recordset globex-ns-delegation -n ack-system
-oc get dnspolicy prod-web-dnspolicy -n ingress-gateway
+oc get dnspolicy prod-web -n ingress-gateway
 oc get secret aws-credentials -n ingress-gateway
 oc get gateway prod-web -n ingress-gateway
 oc get httproute echo-api -n echo-api
-oc get tlspolicy prod-web-tls-policy -n ingress-gateway
+oc get tlspolicy prod-web -n ingress-gateway
 oc get certificate -n ingress-gateway
 
 # Check Job logs
@@ -293,7 +293,7 @@ oc get gateway prod-web -n ingress-gateway -o jsonpath='{.spec.listeners[0].host
 oc get httproute echo-api -n echo-api -o jsonpath='{.spec.hostnames[0]}'
 
 # Check DNSPolicy is enforced
-oc get dnspolicy prod-web-dnspolicy -n ingress-gateway -o jsonpath='{.status.conditions}' | jq '.[] | select(.type=="Enforced")'
+oc get dnspolicy prod-web -n ingress-gateway -o jsonpath='{.status.conditions}' | jq '.[] | select(.type=="Enforced")'
 
 # Check DNS resolution from Internet
 HOSTNAME=$(oc get httproute echo-api -n echo-api -o jsonpath='{.spec.hostnames[0]}')
@@ -317,9 +317,9 @@ curl https://$HOSTNAME
 │   │   ├── echo-api-deployment-echo-api.yaml
 │   │   ├── echo-api-httproute-echo-api.yaml
 │   │   ├── echo-api-service-echo-api.yaml
-│   │   ├── ingress-gateway-dnspolicy-prod-web-dnspolicy.yaml
+│   │   ├── ingress-gateway-dnspolicy-prod-web.yaml
 │   │   ├── ingress-gateway-gateway-prod-web.yaml
-│   │   ├── ingress-gateway-tlspolicy-prod-web-tls-policy.yaml
+│   │   ├── ingress-gateway-tlspolicy-prod-web.yaml
 │   │   ├── openshift-gitops-job-aws-credentials.yaml
 │   │   ├── openshift-gitops-job-echo-api-httproute.yaml
 │   │   ├── openshift-gitops-job-gateway-prod-web.yaml
@@ -378,8 +378,8 @@ Everything else is 100% dynamic → Works across different clusters/environments
 - Namespaces: `echo-api`, `ingress-gateway`
 - Gateway `prod-web` (with placeholder hostname)
 - HTTPRoute `echo-api` (with placeholder hostname)
-- TLSPolicy `prod-web-tls-policy`
-- DNSPolicy `prod-web-dnspolicy`
+- TLSPolicy `prod-web`
+- DNSPolicy `prod-web`
 - Deployment `echo-api`
 - Service `echo-api`
 - Jobs (4): AWS credentials, DNS setup, Gateway patch, HTTPRoute patch
@@ -491,7 +491,7 @@ oc get clusterissuer cluster
 oc get certificate -n ingress-gateway
 
 # Check TLSPolicy status
-oc get tlspolicy prod-web-tls-policy -n ingress-gateway -o yaml
+oc get tlspolicy prod-web -n ingress-gateway -o yaml
 
 # Check cert-manager logs
 oc logs -n cert-manager deployment/cert-manager
@@ -541,7 +541,7 @@ oc delete secret aws-credentials -n ingress-gateway
 oc delete job aws-credentials-setup -n openshift-gitops
 
 # Check DNSPolicy status
-oc get dnspolicy prod-web-dnspolicy -n ingress-gateway -o jsonpath='{.status.conditions}' | jq '.'
+oc get dnspolicy prod-web -n ingress-gateway -o jsonpath='{.status.conditions}' | jq '.'
 
 # Check DNS Operator logs for provider errors
 oc logs -n openshift-operators deployment/dns-operator-controller-manager --tail=50 | grep -i "prod-web\|provider\|error"
@@ -557,7 +557,7 @@ oc get secret aws-credentials -n ingress-gateway -o jsonpath='{.data.AWS_REGION}
 **Fix**:
 ```bash
 # Check DNSPolicy is enforced
-oc get dnspolicy prod-web-dnspolicy -n ingress-gateway -o jsonpath='{.status.conditions}' | jq '.[] | select(.type=="Enforced")'
+oc get dnspolicy prod-web -n ingress-gateway -o jsonpath='{.status.conditions}' | jq '.[] | select(.type=="Enforced")'
 # Should show: "status": "True", "message": "DNSPolicy has been successfully enforced"
 
 # Check DNS resolution

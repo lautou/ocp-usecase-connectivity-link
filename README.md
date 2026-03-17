@@ -67,7 +67,7 @@ oc get hostedzone globex -n ack-system
 oc get recordset globex-ns-delegation -n ack-system
 
 # Check DNSPolicy and Internet exposure
-oc get dnspolicy prod-web-dnspolicy -n ingress-gateway
+oc get dnspolicy prod-web -n ingress-gateway
 oc get secret aws-credentials -n ingress-gateway
 
 # Check Gateway resources
@@ -304,7 +304,7 @@ oc delete job gateway-prod-web-setup -n openshift-gitops
 
 ```bash
 # Check TLSPolicy status
-oc get tlspolicy prod-web-tls-policy -n ingress-gateway -o yaml
+oc get tlspolicy prod-web -n ingress-gateway -o yaml
 
 # Check Certificate
 oc get certificate -n ingress-gateway
@@ -320,7 +320,7 @@ oc get clusterissuer cluster
 
 ```bash
 # Check DNSPolicy status
-oc get dnspolicy prod-web-dnspolicy -n ingress-gateway -o yaml
+oc get dnspolicy prod-web -n ingress-gateway -o yaml
 
 # Check AWS credentials Secret type (MUST be kuadrant.io/aws)
 oc get secret aws-credentials -n ingress-gateway -o jsonpath='{.type}'
@@ -332,7 +332,7 @@ oc logs -n openshift-operators deployment/dns-operator-controller-manager --tail
 oc get secret aws-credentials -n ingress-gateway -o jsonpath='{.data.AWS_REGION}' | base64 -d
 
 # Force DNSPolicy recreation
-oc delete dnspolicy prod-web-dnspolicy -n ingress-gateway
+oc delete dnspolicy prod-web -n ingress-gateway
 # ArgoCD will recreate it
 ```
 
@@ -351,7 +351,7 @@ dig +short $HOSTNAME
 oc get gateway prod-web -n ingress-gateway -o jsonpath='{.status.addresses}'
 
 # Check DNSPolicy is enforced
-oc get dnspolicy prod-web-dnspolicy -n ingress-gateway -o jsonpath='{.status.conditions}' | jq '.[] | select(.type=="Enforced")'
+oc get dnspolicy prod-web -n ingress-gateway -o jsonpath='{.status.conditions}' | jq '.[] | select(.type=="Enforced")'
 
 # Test HTTPS (check TLS cert and HTTP response)
 curl -v https://$HOSTNAME

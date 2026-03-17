@@ -1,7 +1,7 @@
 apiVersion: kuadrant.io/v1
 kind: DNSPolicy
 metadata:
-  name: prod-web-dnspolicy
+  name: prod-web
   namespace: ingress-gateway
 spec:
   providerRefs:
