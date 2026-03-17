@@ -18,7 +18,8 @@ Everything is managed via GitOps using ArgoCD with **100% dynamic configuration*
 3. **DNS Records** - Kuadrant DNSPolicy creates CNAME records pointing to Gateway Load Balancer
 4. **Istio Gateway** - HTTPS ingress gateway at `*.globex.<cluster-domain>`
 5. **TLS Certificates** - Automatic Let's Encrypt certificates via cert-manager
-6. **Echo API Application** - Demo service accessible from Internet at `https://echo.globex.<cluster-domain>`
+6. **Authentication** - Kuadrant AuthPolicy with deny-by-default at Gateway level
+7. **Echo API Application** - Demo service (access blocked by default AuthPolicy)
 
 ## Prerequisites
 
@@ -66,8 +67,10 @@ oc logs -n openshift-gitops job/echo-api-httproute-setup
 oc get hostedzone globex -n ack-system
 oc get recordset globex-ns-delegation -n ack-system
 
-# Check DNSPolicy and Internet exposure
+# Check Policies
+oc get authpolicy prod-web-deny-all -n ingress-gateway
 oc get dnspolicy prod-web -n ingress-gateway
+oc get tlspolicy prod-web -n ingress-gateway
 oc get secret aws-credentials -n ingress-gateway
 
 # Check Gateway resources
@@ -83,9 +86,17 @@ oc get service echo-api -n echo-api
 HOSTNAME=$(oc get httproute echo-api -n echo-api -o jsonpath='{.spec.hostnames[0]}')
 dig +short $HOSTNAME
 
-# Test echo-api endpoint from Internet
+# Test echo-api endpoint from Internet (will return HTTP 403 due to deny-by-default AuthPolicy)
 curl https://$HOSTNAME
+
+# Expected response with AuthPolicy deny-by-default:
+# {
+#   "error": "Forbidden",
+#   "message": "Access denied by default by the gateway operator..."
+# }
 ```
+
+**Note**: The echo-api will return **HTTP 403 Forbidden** because of the deny-by-default AuthPolicy at the Gateway level. This is a security feature. See the "Troubleshooting" section to create an AuthPolicy that allows access.
 
 ## Architecture
 
@@ -101,6 +112,7 @@ Static Resources (Git)
     ├─ RBAC (ClusterRole + ClusterRoleBinding)
     ├─ GatewayClass (istio)
     ├─ Gateway (with placeholder hostname)
+    ├─ AuthPolicy (deny-by-default at Gateway level)
     ├─ TLSPolicy (cert-manager integration)
     ├─ DNSPolicy (Kuadrant DNS integration for Internet exposure)
     ├─ HTTPRoute (with placeholder hostname)
@@ -126,6 +138,7 @@ Runtime Execution:
 |-----------|------|---------|
 | **GatewayClass** | Static | Defines Istio as Gateway controller |
 | **Gateway** | Static + Patch | HTTPS ingress with wildcard hostname |
+| **AuthPolicy** | Static | Deny-by-default authentication at Gateway level |
 | **TLSPolicy** | Static | Automatic TLS cert via cert-manager |
 | **DNSPolicy** | Static | Creates DNS records for Internet exposure |
 | **HTTPRoute** | Static + Patch | Routes traffic to echo-api service |
@@ -173,6 +186,40 @@ spec:
 - ✅ Simple Jobs (3-line patches)
 - ✅ Works across all clusters
 - ✅ No ArgoCD drift (ignoreDifferences configured)
+
+### Pattern: Deny-by-Default Authentication
+
+**Security Model**: The Gateway has a default AuthPolicy that denies all traffic. Individual HTTPRoutes must define their own AuthPolicy to allow access.
+
+**Gateway-level AuthPolicy** (`prod-web-deny-all`):
+```yaml
+apiVersion: kuadrant.io/v1
+kind: AuthPolicy
+metadata:
+  name: prod-web-deny-all
+  namespace: ingress-gateway
+spec:
+  targetRef:
+    kind: Gateway
+    name: prod-web
+  rules:
+    authorization:
+      deny-all:
+        opa:
+          rego: "allow = false"
+```
+
+**Result**: All requests to the Gateway return HTTP 403 Forbidden with a JSON message explaining that access is denied by default.
+
+**To allow access**: Create a specific AuthPolicy targeting the HTTPRoute in the application namespace (e.g., `echo-api`).
+
+**Why this pattern?**
+- ✅ Secure by default - no accidental exposure
+- ✅ Explicit allow - each route must define its authentication
+- ✅ Defense in depth - even if HTTPRoute is created, no access without AuthPolicy
+- ✅ Clear error messages - developers know what to do
+
+**Important**: With this AuthPolicy active, `echo-api` will return HTTP 403 until you create a specific AuthPolicy for the HTTPRoute.
 
 ## Configuration
 
@@ -270,6 +317,39 @@ Everything else adapts to the cluster automatically.
 **Patches**: HTTPRoute `echo-api` in `echo-api` namespace
 
 ## Troubleshooting
+
+### Echo API Returns HTTP 403 Forbidden (AuthPolicy)
+
+**This is expected behavior** - The Gateway has a deny-by-default AuthPolicy for security.
+
+```bash
+# Verify AuthPolicy is active
+oc get authpolicy prod-web-deny-all -n ingress-gateway
+
+# Create an AuthPolicy to allow access to echo-api
+cat <<EOF | oc apply -f -
+apiVersion: kuadrant.io/v1
+kind: AuthPolicy
+metadata:
+  name: echo-api-allow
+  namespace: echo-api
+spec:
+  targetRef:
+    kind: HTTPRoute
+    name: echo-api
+  rules:
+    authentication:
+      anonymous:
+        anonymous: {}
+    authorization:
+      allow-all:
+        opa:
+          rego: "allow = true"
+EOF
+
+# Test access again
+curl https://echo.globex.myocp.sandbox4993.opentlc.com
+```
 
 ### DNS Not Resolving
 

@@ -37,19 +37,26 @@ This repository contains GitOps manifests for deploying Red Hat Connectivity Lin
    - Targets the Gateway `prod-web`
    - Automatically creates Let's Encrypt certificate in Secret `api-tls`
 
-6. **DNSPolicy** (`ingress-gateway-dnspolicy-prod-web.yaml`)
+6. **AuthPolicy** (`ingress-gateway-authpolicy-prod-web-deny-all.yaml`)
+   - Kuadrant AuthPolicy for authentication/authorization at Gateway level
+   - **Deny-by-default pattern**: Blocks all traffic unless explicitly allowed
+   - Uses OPA (Open Policy Agent) with rego policy: `allow = false`
+   - Returns HTTP 403 with JSON error message
+   - Requires HTTPRoute-specific AuthPolicy to allow access
+
+7. **DNSPolicy** (`ingress-gateway-dnspolicy-prod-web.yaml`)
    - Kuadrant DNSPolicy for automatic DNS record management in Route53
    - References Secret `aws-credentials` (type: `kuadrant.io/aws`)
    - Targets the Gateway `prod-web`
    - Automatically creates CNAME records pointing Gateway hostnames to Load Balancer
 
-7. **Echo API Application** (echo-api namespace)
+8. **Echo API Application** (echo-api namespace)
    - **Deployment** (`echo-api-deployment-echo-api.yaml`) - 1 replica, image: `quay.io/3scale/authorino:echo-api`
    - **Service** (`echo-api-service-echo-api.yaml`) - ClusterIP exposing port 8080
    - **HTTPRoute** (`echo-api-httproute-echo-api.yaml`) - Static YAML with placeholder hostname: `echo.globex.placeholder`
    - **Patched by Job** to use actual cluster domain
 
-8. **Jobs** (openshift-gitops namespace)
+9. **Jobs** (openshift-gitops namespace)
    - **Job #1: AWS Credentials Setup** (`openshift-gitops-job-aws-credentials.yaml`)
      - Extracts AWS credentials from `kube-system/aws-creds`
      - Extracts AWS region from cluster infrastructure
@@ -84,6 +91,7 @@ Kustomize Base
     ├── RBAC (ClusterRole, ClusterRoleBinding)
     ├── GatewayClass (istio)
     ├── Gateway (static YAML with placeholder)
+    ├── AuthPolicy (deny-by-default at Gateway level)
     ├── TLSPolicy (cert-manager integration)
     ├── DNSPolicy (Kuadrant DNS for Internet exposure)
     ├── HTTPRoute (static YAML with placeholder)
@@ -223,6 +231,76 @@ stringData:
 
 **Result**: Internet users can access `https://echo.globex.myocp.sandbox4993.opentlc.com`
 
+### Kuadrant AuthPolicy and Deny-by-Default Pattern
+
+**AuthPolicy** provides authentication and authorization for Gateway and HTTPRoute resources.
+
+**Architecture Pattern**: Deny-by-default at Gateway level
+- Gateway-level AuthPolicy blocks all traffic by default
+- HTTPRoute-level AuthPolicy must be created to allow specific access
+- Defense in depth: prevents accidental exposure of services
+
+**Gateway AuthPolicy** (`prod-web-deny-all`):
+```yaml
+apiVersion: kuadrant.io/v1
+kind: AuthPolicy
+metadata:
+  name: prod-web-deny-all
+  namespace: ingress-gateway
+spec:
+  targetRef:
+    kind: Gateway
+    name: prod-web
+  rules:
+    authorization:
+      deny-all:
+        opa:
+          rego: "allow = false"  # OPA policy that always denies
+    response:
+      unauthorized:
+        headers:
+          "content-type":
+            value: application/json
+        body:
+          value: |
+            {
+              "error": "Forbidden",
+              "message": "Access denied by default..."
+            }
+```
+
+**What happens**:
+1. All requests to Gateway `prod-web` are evaluated by AuthPolicy
+2. OPA policy `allow = false` always denies authorization
+3. Returns HTTP 403 Forbidden with JSON body
+4. HTTPRoute-specific AuthPolicy can override this (more specific wins)
+
+**Why this pattern?**
+- ✅ **Secure by default**: No service is accidentally exposed
+- ✅ **Explicit allow**: Developers must consciously create AuthPolicy for each route
+- ✅ **Defense in depth**: Even if HTTPRoute exists, no access without auth
+- ✅ **Clear errors**: JSON message tells developers what to do
+
+**Important**: With this AuthPolicy active, **echo-api will return HTTP 403** until you create a specific AuthPolicy for the `echo-api` HTTPRoute in the `echo-api` namespace.
+
+**To allow access to echo-api**, create:
+```yaml
+apiVersion: kuadrant.io/v1
+kind: AuthPolicy
+metadata:
+  name: echo-api-allow
+  namespace: echo-api
+spec:
+  targetRef:
+    kind: HTTPRoute
+    name: echo-api
+  rules:
+    authentication:
+      # Add your authentication rules here (e.g., API key, JWT, etc.)
+    authorization:
+      # Add your authorization rules here
+```
+
 ### Job Management
 
 All Jobs use minimal ArgoCD configuration:
@@ -317,6 +395,7 @@ curl https://$HOSTNAME
 │   │   ├── echo-api-deployment-echo-api.yaml
 │   │   ├── echo-api-httproute-echo-api.yaml
 │   │   ├── echo-api-service-echo-api.yaml
+│   │   ├── ingress-gateway-authpolicy-prod-web-deny-all.yaml
 │   │   ├── ingress-gateway-dnspolicy-prod-web.yaml
 │   │   ├── ingress-gateway-gateway-prod-web.yaml
 │   │   ├── ingress-gateway-tlspolicy-prod-web.yaml
@@ -377,6 +456,7 @@ Everything else is 100% dynamic → Works across different clusters/environments
 - GatewayClass `istio`
 - Namespaces: `echo-api`, `ingress-gateway`
 - Gateway `prod-web` (with placeholder hostname)
+- AuthPolicy `prod-web-deny-all` (deny-by-default at Gateway level)
 - HTTPRoute `echo-api` (with placeholder hostname)
 - TLSPolicy `prod-web`
 - DNSPolicy `prod-web`
@@ -550,7 +630,63 @@ oc logs -n openshift-operators deployment/dns-operator-controller-manager --tail
 oc get secret aws-credentials -n ingress-gateway -o jsonpath='{.data.AWS_REGION}' | base64 -d
 ```
 
-### Echo API Not Accessible from Internet
+### Echo API Returns HTTP 403 Forbidden
+
+**Cause**: AuthPolicy deny-by-default is blocking access
+
+**Expected Behavior**: This is NORMAL with the current configuration. The Gateway has an AuthPolicy that denies all traffic by default.
+
+**Response**:
+```json
+{
+  "error": "Forbidden",
+  "message": "Access denied by default by the gateway operator. If you are the administrator of the service, create a specific auth policy for the route."
+}
+```
+
+**Fix (to allow access)**:
+```bash
+# Create an AuthPolicy for the echo-api HTTPRoute
+cat <<EOF | oc apply -f -
+apiVersion: kuadrant.io/v1
+kind: AuthPolicy
+metadata:
+  name: echo-api-allow
+  namespace: echo-api
+spec:
+  targetRef:
+    kind: HTTPRoute
+    name: echo-api
+  rules:
+    authentication:
+      anonymous:
+        anonymous: {}
+    authorization:
+      allow-all:
+        opa:
+          rego: "allow = true"
+EOF
+
+# Verify AuthPolicy is enforced
+oc get authpolicy echo-api-allow -n echo-api -o jsonpath='{.status.conditions}' | jq '.'
+
+# Test access
+curl https://echo.globex.myocp.sandbox4993.opentlc.com
+```
+
+**Check AuthPolicy status**:
+```bash
+# Check Gateway-level AuthPolicy
+oc get authpolicy prod-web-deny-all -n ingress-gateway -o yaml
+
+# Check if HTTPRoute has AuthPolicy
+oc get authpolicy -n echo-api
+
+# Check Gateway status for AuthPolicy
+oc get gateway prod-web -n ingress-gateway -o jsonpath='{.status.conditions}' | jq '.[] | select(.type | contains("AuthPolicy"))'
+```
+
+### Echo API Not Accessible from Internet (After Allowing Auth)
 
 **Cause**: DNS records not created or DNS propagation delay
 
@@ -591,6 +727,9 @@ echo | openssl s_client -connect $HOSTNAME:443 -servername $HOSTNAME 2>/dev/null
 - **CRITICAL - Secret type**: AWS credentials Secret MUST have type `kuadrant.io/aws` (not `Opaque`) for DNSPolicy to work
 - **DNSPolicy automation**: Automatically creates/updates DNS records in Route53 when Gateway Load Balancer changes
 - **Internet exposure**: DNSPolicy is what makes echo-api accessible from Internet (creates CNAME → Load Balancer)
+- **CRITICAL - AuthPolicy deny-by-default**: Gateway has AuthPolicy that blocks all traffic by default (HTTP 403)
+- **Access control**: Each HTTPRoute MUST have its own AuthPolicy to allow access (echo-api is blocked by default)
+- **Security pattern**: Deny-by-default prevents accidental exposure of services
 
 ## Related Projects
 

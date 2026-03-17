@@ -17,6 +17,7 @@ resources:
   - echo-api-service-echo-api.yaml
 
   # ingress-gateway namespace resources
+  - ingress-gateway-authpolicy-prod-web-deny-all.yaml
   - ingress-gateway-dnspolicy-prod-web.yaml
   - ingress-gateway-gateway-prod-web.yaml
   - ingress-gateway-tlspolicy-prod-web.yaml
