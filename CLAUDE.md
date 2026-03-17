@@ -50,14 +50,20 @@ This repository contains GitOps manifests for deploying Red Hat Connectivity Lin
    - Targets the Gateway `prod-web`
    - Automatically creates CNAME records pointing Gateway hostnames to Load Balancer
 
-8. **Echo API Application** (echo-api namespace)
+8. **RateLimitPolicy** (`ingress-gateway-ratelimitpolicy-prod-web.yaml`)
+   - Kuadrant RateLimitPolicy for rate limiting at Gateway level
+   - Targets the Gateway `prod-web`
+   - Default limit: 5 requests per 10 second window
+   - Applies to all routes through the Gateway
+
+9. **Echo API Application** (echo-api namespace)
    - **Deployment** (`echo-api-deployment-echo-api.yaml`) - 1 replica, image: `quay.io/3scale/authorino:echo-api`
    - **Service** (`echo-api-service-echo-api.yaml`) - ClusterIP exposing port 8080
    - **HTTPRoute** (`echo-api-httproute-echo-api.yaml`) - Static YAML with placeholder hostname: `echo.globex.placeholder`
    - **AuthPolicy** (`echo-api-authpolicy-echo-api.yaml`) - Allow-all policy for demonstration
    - **Patched by Job** to use actual cluster domain (HTTPRoute only)
 
-9. **Jobs** (openshift-gitops namespace)
+10. **Jobs** (openshift-gitops namespace)
    - **Job #1: AWS Credentials Setup** (`openshift-gitops-job-aws-credentials.yaml`)
      - Extracts AWS credentials from `kube-system/aws-creds`
      - Extracts AWS region from cluster infrastructure
@@ -95,6 +101,7 @@ Kustomize Base
     ├── AuthPolicy (deny-by-default at Gateway level)
     ├── TLSPolicy (cert-manager integration)
     ├── DNSPolicy (Kuadrant DNS for Internet exposure)
+    ├── RateLimitPolicy (rate limiting at Gateway level)
     ├── HTTPRoute (static YAML with placeholder)
     ├── AuthPolicy (allow-all for echo-api HTTPRoute)
     ├── Deployment + Service (echo-api)
@@ -402,6 +409,7 @@ curl https://$HOSTNAME
 │   │   ├── ingress-gateway-authpolicy-prod-web-deny-all.yaml
 │   │   ├── ingress-gateway-dnspolicy-prod-web.yaml
 │   │   ├── ingress-gateway-gateway-prod-web.yaml
+│   │   ├── ingress-gateway-ratelimitpolicy-prod-web.yaml
 │   │   ├── ingress-gateway-tlspolicy-prod-web.yaml
 │   │   ├── openshift-gitops-job-aws-credentials.yaml
 │   │   ├── openshift-gitops-job-echo-api-httproute.yaml

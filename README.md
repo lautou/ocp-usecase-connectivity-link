@@ -19,7 +19,8 @@ Everything is managed via GitOps using ArgoCD with **100% dynamic configuration*
 4. **Istio Gateway** - HTTPS ingress gateway at `*.globex.<cluster-domain>`
 5. **TLS Certificates** - Automatic Let's Encrypt certificates via cert-manager
 6. **Authentication** - Kuadrant AuthPolicy with deny-by-default at Gateway level
-7. **Echo API Application** - Demo service with allow-all AuthPolicy
+7. **Rate Limiting** - Kuadrant RateLimitPolicy at Gateway level (5 req/10s)
+8. **Echo API Application** - Demo service with allow-all AuthPolicy
 
 ## Prerequisites
 
@@ -71,6 +72,7 @@ oc get recordset globex-ns-delegation -n ack-system
 oc get authpolicy prod-web-deny-all -n ingress-gateway
 oc get authpolicy echo-api -n echo-api
 oc get dnspolicy prod-web -n ingress-gateway
+oc get ratelimitpolicy prod-web -n ingress-gateway
 oc get tlspolicy prod-web -n ingress-gateway
 oc get secret aws-credentials -n ingress-gateway
 
@@ -141,6 +143,7 @@ Runtime Execution:
 | **AuthPolicy (echo-api)** | Static | Allow-all policy for echo-api HTTPRoute |
 | **TLSPolicy** | Static | Automatic TLS cert via cert-manager |
 | **DNSPolicy** | Static | Creates DNS records for Internet exposure |
+| **RateLimitPolicy** | Static | Rate limiting at Gateway level (5 req/10s) |
 | **HTTPRoute** | Static + Patch | Routes traffic to echo-api service |
 | **Deployment** | Static | echo-api application (1 replica) |
 | **Service** | Static | ClusterIP service for echo-api |
