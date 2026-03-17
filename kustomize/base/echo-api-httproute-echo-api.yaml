@@ -3,13 +3,9 @@ kind: HTTPRoute
 metadata:
   name: echo-api
   namespace: echo-api
-  annotations:
-    rhcl.io/hostname-template: "echo.globex.{baseDomain}"
   labels:
     app.kubernetes.io/instance: echo-api
     app.kubernetes.io/name: echo-api
-    deployment: echo-api
-    service: echo-api
 spec:
   hostnames:
     - echo.globex.placeholder
