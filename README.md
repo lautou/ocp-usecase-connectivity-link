@@ -24,18 +24,27 @@ Everything is managed via GitOps using ArgoCD with **100% dynamic configuration*
 
 ## Prerequisites
 
-### Required Operators
-- **OpenShift GitOps** (ArgoCD)
-- **ACK Route53 controller** (in `ack-system` namespace)
-- **OpenShift Service Mesh** (Istio with Gateway API support)
-- **cert-manager**
-- **Kuadrant Operator**
+### OpenShift Platform
+- **OpenShift Container Platform 4.19+** running on AWS
+  - Gateway API CRDs are automatically installed
+- **OpenShift GitOps** (ArgoCD) - for GitOps deployment
+- **OpenShift Ingress Operator** (pre-installed) - manages Gateway API integration
 
-### Required Configuration
-- OpenShift cluster running on AWS
-- AWS credentials in `kube-system/aws-creds`
-- cert-manager ClusterIssuer named `cluster` (configured for Let's Encrypt)
+### Service Mesh
+- **OpenShift Service Mesh 3 Operator** (Sail Operator)
+  - Installed via OperatorHub
+  - **Note**: Istio control plane will be created automatically by Ingress Operator when GatewayClass is created
+  - **Note**: If RHOAI is installed, the control plane may already exist and will be shared
+
+### AWS Integration
+- **ACK Route53 controller** (in `ack-system` namespace)
+- AWS credentials in `kube-system/aws-creds` (created during cluster installation)
 - Parent Route53 zone must exist and be writable
+
+### Certificate & Policy Management
+- **cert-manager** - for automatic TLS certificate management
+  - ClusterIssuer named `cluster` must exist (configured for Let's Encrypt)
+- **Kuadrant Operator** - provides DNS, TLS, Auth, and RateLimit policies
 
 ## Quick Start
 
@@ -99,6 +108,19 @@ curl https://$HOSTNAME
 ```
 
 **Note**: The echo-api includes an allow-all AuthPolicy that overrides the Gateway's deny-by-default policy, so it should be accessible via HTTPS.
+
+## Gateway API Approach
+
+This project uses **Kubernetes Gateway API** managed by the OpenShift Ingress Operator:
+
+- **Automatic Control Plane**: The Istio control plane is created automatically when you create the GatewayClass
+- **Shared Infrastructure**: The control plane can be shared with other components (e.g., Red Hat OpenShift AI)
+- **Platform Integration**: Fully integrated with OpenShift platform features and lifecycle management
+- **Zero Manual OSSM Configuration**: No need to create Istio or IstioCNI custom resources manually
+
+The Ingress Operator creates an Istio CR named `openshift-gateway` in the `openshift-ingress` namespace, which is managed automatically and shared across all Gateway API resources.
+
+**Alternative**: OpenShift Service Mesh 3 also supports manual installation with full control over Istio configuration, but this approach is not used in this project as the automatic Gateway API integration is simpler and sufficient for this use case.
 
 ## Architecture
 

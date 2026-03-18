@@ -121,21 +121,92 @@ ArgoCD ignores hostname drifts (ignoreDifferences)
 
 ## Prerequisites
 
-- OpenShift cluster running on AWS
+### OpenShift Platform
+- OpenShift cluster running on AWS (version 4.19+)
 - **OpenShift GitOps** (ArgoCD) installed in `openshift-gitops` namespace
+
+### Gateway API and Istio
+- **OpenShift Gateway API CRDs** (automatically available in OpenShift 4.19+)
+- **OpenShift Service Mesh 3 Operator** (Sail Operator) installed
+  - Operator will be used by Ingress Operator to create Istio control plane
+  - **Note**: You do NOT need to create Istio CR manually - it will be created automatically when you create the GatewayClass
+  - **Note**: If Red Hat OpenShift AI (RHOAI) is installed, it may have already created an Istio CR (`openshift-gateway`) which will be reused
+- **OpenShift Ingress Operator** (pre-installed in OpenShift)
+  - Manages Gateway API integration and Istio lifecycle
+
+### AWS Integration
 - **ACK Route53 controller** installed and configured in `ack-system` namespace
   - Requires `ack-route53-user-secrets` Secret (AWS credentials)
   - Requires `ack-route53-user-config` ConfigMap (AWS region, etc.)
-- **OpenShift Service Mesh** (Istio) installed with Gateway API support
-  - GatewayClass `istio` must be available
+- AWS credentials in `kube-system/aws-creds` (created during cluster installation)
+- Parent Route53 zone must exist and be writable
+
+### Certificate Management
 - **cert-manager** installed cluster-wide
   - ClusterIssuer named `cluster` must exist (configured for Let's Encrypt)
-- **Kuadrant Operator** installed (provides TLSPolicy and DNSPolicy CRDs)
+
+### Kuadrant
+- **Kuadrant Operator** installed (provides TLSPolicy, DNSPolicy, AuthPolicy, RateLimitPolicy CRDs)
   - DNS Operator component must be running (manages DNS records in Route53)
-- AWS credentials in `kube-system/aws-creds` (for DNSPolicy provider)
-- Parent Route53 zone must exist and be accessible
+  - Limitador component must be running (manages rate limiting)
 
 ## Key Design Decisions
+
+### Gateway API Architecture Choice
+
+**This project uses the Kubernetes Gateway API** managed by the OpenShift Ingress Operator, not manual OpenShift Service Mesh 3 installation.
+
+**Architecture Approach**:
+```
+GatewayClass (istio)
+  ↓ controllerName: openshift.io/gateway-controller/v1
+OpenShift Ingress Operator
+  ↓ automatically creates
+Istio CR (openshift-gateway)
+  ↓ managed by
+Sail Operator (OpenShift Service Mesh 3)
+  ↓ creates
+IstioRevision + istiod Deployment
+  ↓ control plane for
+Gateway resources (prod-web, etc.)
+```
+
+**Why Gateway API over manual OSSM 3?**
+
+This project chooses the **Gateway API integration** for the following reasons:
+
+1. ✅ **Zero Configuration**: Ingress Operator automatically installs and manages Istio control plane
+2. ✅ **Platform Integration**: Full integration with OpenShift platform features
+3. ✅ **Automatic Lifecycle Management**: Upgrades handled by OpenShift Operators
+4. ✅ **Simplified Operations**: No manual Istio CR/IstioCNI management required
+5. ✅ **Standard API**: Uses Kubernetes Gateway API (v1) for portability
+
+**Alternative Approach (not used)**:
+
+OpenShift Service Mesh 3 also supports **manual installation** where users:
+- Create `Istio` and `IstioCNI` custom resources manually
+- Have full control over Istio configuration and multiple control planes
+- Manage lifecycle independently (like OSSM 2.x)
+- Use traditional gateway injection or optionally Gateway API with `istio.io/gateway-controller`
+
+This manual approach provides more flexibility but requires more operational overhead, which is unnecessary for this use case.
+
+**Control Plane Sharing**:
+
+The Istio control plane created by the Ingress Operator (named `openshift-gateway` in `openshift-ingress` namespace) **can be shared** across multiple GatewayClass resources. This means:
+
+- Other components (e.g., Red Hat OpenShift AI) may create their own GatewayClass
+- All GatewayClass resources with `controllerName: openshift.io/gateway-controller/v1` share the same control plane
+- Each Gateway resource gets its own data plane (Envoy proxy deployment)
+- This sharing is efficient and does not impact isolation or functionality
+
+**Important Notes**:
+- The Istio CR name is hardcoded to `openshift-gateway` by the Ingress Operator
+- The Istio CR namespace is hardcoded to `openshift-ingress`
+- Creating a GatewayClass with `openshift.io/gateway-controller/v1` will either:
+  - Reuse existing Istio CR if one exists (created by another component)
+  - Create a new Istio CR if none exists
+- You **do not** and **should not** create Istio CR manually when using this approach
 
 ### Static Resources with Placeholders + Job Patches
 
@@ -693,6 +764,15 @@ echo | openssl s_client -connect $HOSTNAME:443 -servername $HOSTNAME 2>/dev/null
 
 ## Important Notes
 
+### Gateway API and Control Plane
+- **Gateway API approach**: This project uses Kubernetes Gateway API managed by OpenShift Ingress Operator (not manual OSSM 3 installation)
+- **Automatic Istio CR creation**: The Ingress Operator automatically creates the Istio CR (`openshift-gateway` in `openshift-ingress` namespace) when you create the first GatewayClass with `controllerName: openshift.io/gateway-controller/v1`
+- **Control plane sharing**: The Istio control plane is shared across all GatewayClass resources using `openshift.io/gateway-controller/v1` controller
+- **Coexistence with RHOAI**: If Red Hat OpenShift AI (RHOAI) is installed, it creates its own GatewayClass (`data-science-gateway-class`) which shares the same Istio control plane (`openshift-gateway`)
+- **Do NOT create Istio CR manually**: When using Gateway API integration, the Istio CR is managed by the Ingress Operator - creating it manually will cause conflicts
+- **One control plane, multiple data planes**: Each Gateway resource gets its own Envoy proxy deployment (data plane), but all share the same istiod control plane
+
+### Job Management
 - **Completed Jobs are preserved**: No TTL cleanup - Jobs remain for audit/debugging
 - **Job recreates on deletion**: With `Force=true`, deleting the Jobs triggers recreation on next sync
 - **Idempotent operations**: All Jobs use `oc apply` or `oc patch` making them safe to re-run
