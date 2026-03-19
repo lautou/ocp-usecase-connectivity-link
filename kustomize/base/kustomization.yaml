@@ -18,6 +18,9 @@ resources:
   - echo-api-ratelimitpolicy-echo-api-rlp.yaml
   - echo-api-service-echo-api.yaml
 
+  # keycloak namespace resources (Keycloak realm import)
+  - keycloak-keycloakrealmimport-globex-user1.yaml
+
   # ingress-gateway namespace resources
   - ingress-gateway-authpolicy-prod-web-deny-all.yaml
   - ingress-gateway-dnspolicy-prod-web.yaml

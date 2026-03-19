@@ -1,0 +1,273 @@
+apiVersion: k8s.keycloak.org/v2alpha1
+kind: KeycloakRealmImport
+metadata:
+  name: globex-user1
+  namespace: keycloak
+  labels:
+    app.kubernetes.io/name: keycloak-realm-import
+    app.kubernetes.io/instance: globex-realmimport
+    app.kubernetes.io/part-of: connectivity-link
+    app: keycloak
+  annotations:
+    argocd.argoproj.io/sync-options: SkipDryRunOnMissingResource=true
+spec:
+  keycloakCRName: keycloak
+  realm:
+    id: globex-user1
+    realm: globex-user1
+    displayName: globex-user1
+    enabled: true
+    loginWithEmailAllowed: true
+
+    roles:
+      realm:
+        - name: admin
+        - name: confidential
+        - name: mobile-user
+        - name: web-user
+        - name: user
+        - name: default-roles-globex
+          description: "${role_default-roles}"
+          composite: true
+          composites:
+            realm:
+              - offline_access
+              - uma_authorization
+            client:
+              account:
+                - view-profile
+                - manage-account
+      client:
+        globex-web-gateway:
+          - name: uma_protection
+            clientRole: true
+
+    clients:
+      - clientId: client-manager
+        enabled: true
+        clientAuthenticatorType: client-secret
+        secret: 9JRzL6le4K47JJkcSs6kjd9j2Mmfh1Jc
+        redirectUris:
+          - "/*"
+        webOrigins:
+          - "/*"
+        serviceAccountsEnabled: true
+        frontchannelLogout: true
+        fullScopeAllowed: true
+        protocolMappers:
+          - name: Client ID
+            protocol: openid-connect
+            protocolMapper: oidc-usersessionmodel-note-mapper
+            config:
+              user.session.note: client_id
+              id.token.claim: 'true'
+              access.token.claim: 'true'
+              claim.name: client_id
+              jsonType.label: String
+          - name: Client Host
+            protocol: openid-connect
+            protocolMapper: oidc-usersessionmodel-note-mapper
+            config:
+              user.session.note: clientHost
+              id.token.claim: 'true'
+              access.token.claim: 'true'
+              claim.name: clientHost
+              jsonType.label: String
+          - name: Client IP Address
+            protocol: openid-connect
+            protocolMapper: oidc-usersessionmodel-note-mapper
+            config:
+              user.session.note: clientAddress
+              id.token.claim: 'true'
+              access.token.claim: 'true'
+              claim.name: clientAddress
+              jsonType.label: String
+
+      - clientId: globex-web-gateway
+        enabled: true
+        clientAuthenticatorType: client-secret
+        secret: "X0zRVwSWDVoUpKFhZwtQmZhDtoJ3MkcI"
+        redirectUris:
+          - "*"
+        webOrigins:
+          - "*"
+          - "+"
+        implicitFlowEnabled: true
+        directAccessGrantsEnabled: true
+        serviceAccountsEnabled: true
+        fullScopeAllowed: true
+        protocolMappers:
+          - name: Client ID
+            protocol: openid-connect
+            protocolMapper: oidc-usersessionmodel-note-mapper
+            config:
+              user.session.note: clientId
+              userinfo.token.claim: 'true'
+              id.token.claim: 'true'
+              access.token.claim: 'true'
+              claim.name: clientId
+              jsonType.label: String
+          - name: Client Host
+            protocol: openid-connect
+            protocolMapper: oidc-usersessionmodel-note-mapper
+            config:
+              user.session.note: clientHost
+              userinfo.token.claim: 'true'
+              id.token.claim: 'true'
+              access.token.claim: 'true'
+              claim.name: clientHost
+              jsonType.label: String
+          - name: Client IP Address
+            protocol: openid-connect
+            protocolMapper: oidc-usersessionmodel-note-mapper
+            config:
+              user.session.note: clientAddress
+              userinfo.token.claim: 'true'
+              id.token.claim: 'true'
+              access.token.claim: 'true'
+              claim.name: clientAddress
+              jsonType.label: String
+
+      - clientId: globex-mobile
+        enabled: true
+        clientAuthenticatorType: client-secret
+        secret: "Aob7zLHHStk2RCSn2DVwjmhSwoxOwHW7"
+        redirectUris:
+          - "*"
+        webOrigins:
+          - "*"
+          - "+"
+        implicitFlowEnabled: true
+        directAccessGrantsEnabled: true
+        serviceAccountsEnabled: true
+        fullScopeAllowed: true
+        protocolMappers:
+          - name: Client ID
+            protocol: openid-connect
+            protocolMapper: oidc-usersessionmodel-note-mapper
+            config:
+              user.session.note: clientId
+              userinfo.token.claim: 'true'
+              id.token.claim: 'true'
+              access.token.claim: 'true'
+              claim.name: clientId
+              jsonType.label: String
+          - name: Client Host
+            protocol: openid-connect
+            protocolMapper: oidc-usersessionmodel-note-mapper
+            config:
+              user.session.note: clientHost
+              userinfo.token.claim: 'true'
+              id.token.claim: 'true'
+              access.token.claim: 'true'
+              claim.name: clientHost
+              jsonType.label: String
+          - name: Client IP Address
+            protocol: openid-connect
+            protocolMapper: oidc-usersessionmodel-note-mapper
+            config:
+              user.session.note: clientAddress
+              userinfo.token.claim: 'true'
+              id.token.claim: 'true'
+              access.token.claim: 'true'
+              claim.name: clientAddress
+              jsonType.label: String
+
+    users:
+      - username: service-account-globex-web-gateway
+        enabled: true
+        email: service-account-backend-service@placeholder.org
+        serviceAccountClientId: globex-web-gateway
+        realmRoles:
+          - offline_access
+        clientRoles:
+          globex-web-gateway:
+            - uma_protection
+          account:
+            - view-profile
+            - manage-account
+
+      - username: service-account-client-manager
+        enabled: true
+        serviceAccountClientId: client-manager
+        realmRoles:
+          - default-roles-globex
+        clientRoles:
+          realm-management:
+            - manage-clients
+
+      - username: user1
+        email: user1@email.com
+        enabled: true
+        credentials:
+          - type: password
+            userLabel: My password
+            secretData: '{"value":"80d4Uk0YFiEgjhzKlTCPpWIj1ZwPJhLbdOmtT6jrbGk=","salt":"I/MiuExkIwpPxqm41IaSEQ==","additionalParameters":{}}'
+            credentialData: '{"hashIterations":27500,"algorithm":"pbkdf2-sha256","additionalParameters":{}}'
+        realmRoles:
+          - default-roles-globex-user1
+        clientRoles:
+          realm-management:
+            - realm-admin
+            - manage-realm
+            - manage-clients
+
+      - username: asilva
+        email: asilva@email.com
+        enabled: true
+        credentials:
+          - type: password
+            userLabel: My password
+            secretData: '{"value":"80d4Uk0YFiEgjhzKlTCPpWIj1ZwPJhLbdOmtT6jrbGk=","salt":"I/MiuExkIwpPxqm41IaSEQ==","additionalParameters":{}}'
+            credentialData: '{"hashIterations":27500,"algorithm":"pbkdf2-sha256","additionalParameters":{}}'
+        realmRoles:
+          - default-roles-globex
+          - web-user
+
+      - username: mmiller
+        email: mmiller@topvibe.com
+        enabled: true
+        credentials:
+          - type: password
+            userLabel: My password
+            secretData: '{"value":"80d4Uk0YFiEgjhzKlTCPpWIj1ZwPJhLbdOmtT6jrbGk=","salt":"I/MiuExkIwpPxqm41IaSEQ==","additionalParameters":{}}'
+            credentialData: '{"hashIterations":27500,"algorithm":"pbkdf2-sha256","additionalParameters":{}}'
+        realmRoles:
+          - default-roles-globex
+          - web-user
+
+      - username: asanders
+        email: asanders@topgreatest.com
+        enabled: true
+        credentials:
+          - type: password
+            userLabel: My password
+            secretData: '{"value":"80d4Uk0YFiEgjhzKlTCPpWIj1ZwPJhLbdOmtT6jrbGk=","salt":"I/MiuExkIwpPxqm41IaSEQ==","additionalParameters":{}}'
+            credentialData: '{"hashIterations":27500,"algorithm":"pbkdf2-sha256","additionalParameters":{}}'
+        realmRoles:
+          - default-roles-globex
+          - web-user
+
+      - username: cjones
+        email: cjones@zmail.com
+        enabled: true
+        credentials:
+          - type: password
+            userLabel: My password
+            secretData: '{"value":"80d4Uk0YFiEgjhzKlTCPpWIj1ZwPJhLbdOmtT6jrbGk=","salt":"I/MiuExkIwpPxqm41IaSEQ==","additionalParameters":{}}'
+            credentialData: '{"hashIterations":27500,"algorithm":"pbkdf2-sha256","additionalParameters":{}}'
+        realmRoles:
+          - default-roles-globex
+          - web-user
+
+      - username: pwong
+        email: pwong@firstsimple.com
+        enabled: true
+        credentials:
+          - type: password
+            userLabel: My password
+            secretData: '{"value":"80d4Uk0YFiEgjhzKlTCPpWIj1ZwPJhLbdOmtT6jrbGk=","salt":"I/MiuExkIwpPxqm41IaSEQ==","additionalParameters":{}}'
+            credentialData: '{"hashIterations":27500,"algorithm":"pbkdf2-sha256","additionalParameters":{}}'
+        realmRoles:
+          - default-roles-globex
+          - web-user
