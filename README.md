@@ -56,7 +56,37 @@ Everything is managed via GitOps using ArgoCD with **100% dynamic configuration*
 
 ## Quick Start
 
-### Deploy
+### Option 1: Automated Deployment (Recommended)
+
+Use the deployment script for automated setup with validation:
+
+```bash
+# 1. Create configuration file
+cp config/cluster.yaml.example config/cluster.yaml
+
+# 2. Edit config/cluster.yaml with your cluster URL and credentials
+# (token or password authentication)
+
+# 3. Test configuration (optional)
+./scripts/test-deploy.sh
+
+# 4. Deploy
+./scripts/deploy.sh
+```
+
+The script will:
+- ✅ Validate prerequisites and configuration
+- ✅ Login to your cluster
+- ✅ Check required operators
+- ✅ Deploy ArgoCD Application
+- ✅ Wait for sync completion
+- 📊 Show verification commands
+
+See [scripts/README.md](scripts/README.md) for detailed documentation.
+
+### Option 2: Manual Deployment
+
+Deploy directly using `oc` CLI:
 
 ```bash
 oc apply -f argocd/application.yaml
@@ -283,18 +313,28 @@ Everything else adapts to the cluster automatically.
 .
 ├── argocd/
 │   └── application.yaml                        # ArgoCD Application
+├── config/
+│   └── cluster.yaml.example                    # Cluster configuration template
 ├── kustomize/
 │   ├── base/
 │   │   ├── cluster-*                           # Cluster-scoped resources
 │   │   ├── echo-api-*                          # echo-api namespace resources
 │   │   ├── ingress-gateway-*                   # ingress-gateway namespace
-│   │   ├── openshift-gitops-job-*              # Jobs (3)
+│   │   ├── keycloak-*                          # Keycloak namespace resources
+│   │   ├── openshift-gitops-job-*              # Jobs (4)
 │   │   └── kustomization.yaml
 │   └── overlays/
 │       └── default/
 │           └── kustomization.yaml
-├── CLAUDE.md                                    # Developer documentation
-└── README.md                                    # This file
+├── scripts/
+│   ├── deploy.sh                               # Automated deployment script
+│   ├── test-deploy.sh                          # Configuration validation
+│   └── README.md                               # Scripts documentation
+├── .gitleaks.toml                              # LeakTK allowlist for demo secrets
+├── .gitignore                                  # Git ignore rules
+├── CLAUDE.md                                   # Developer documentation
+├── README.md                                   # This file
+└── SECURITY.md                                 # Security policy and secret management
 ```
 
 **File naming**: `<namespace>-<kind>-<name>.yaml` (or `cluster-<kind>-<name>.yaml` for cluster-scoped)

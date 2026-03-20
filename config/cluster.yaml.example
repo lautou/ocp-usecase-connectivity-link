@@ -1,0 +1,60 @@
+# OpenShift Cluster Configuration
+# Copy this file to cluster.yaml and fill in your actual values
+# WARNING: cluster.yaml is in .gitignore - never commit real credentials!
+
+cluster:
+  # OpenShift cluster API URL
+  # Example: https://api.mycluster.example.com:6443
+  url: "https://api.CLUSTER_NAME.DOMAIN:6443"
+
+  # Authentication method: token or password
+  auth_method: "token"  # Options: "token" or "password"
+
+  # If using token authentication (recommended)
+  token: "sha256~XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX"
+
+  # If using password authentication
+  # username: "kubeadmin"
+  # password: "XXXXX-XXXXX-XXXXX-XXXXX"
+
+  # Skip TLS verification (not recommended for production)
+  insecure_skip_tls_verify: false
+
+# ArgoCD Application configuration
+argocd:
+  # GitOps repository URL
+  repo_url: "https://github.com/lautou/ocp-usecase-connectivity-link.git"
+
+  # Target revision (branch/tag/commit)
+  target_revision: "main"
+
+  # Path in repository
+  path: "kustomize/overlays/default"
+
+  # Application name in ArgoCD
+  app_name: "usecase-connectivity-link"
+
+  # ArgoCD namespace
+  namespace: "openshift-gitops"
+
+# Prerequisites validation (optional - set to false to skip checks)
+validation:
+  # Check if required operators are installed
+  check_operators: true
+
+  # Check if required namespaces exist
+  check_namespaces: true
+
+  # Wait for ArgoCD sync to complete
+  wait_for_sync: true
+
+  # Timeout for sync wait (seconds)
+  sync_timeout: 600
+
+# Optional: Keycloak deployment
+keycloak:
+  # Deploy Keycloak realm import (demo only - contains hardcoded secrets)
+  deploy_realm: false
+
+  # Keycloak namespace (must already exist with Keycloak instance)
+  namespace: "keycloak"

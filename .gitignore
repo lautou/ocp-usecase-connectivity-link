@@ -1,1 +1,4 @@
 .claude/
+
+# Configuration files with credentials (keep .example files)
+config/cluster.yaml

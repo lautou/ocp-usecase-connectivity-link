@@ -418,7 +418,58 @@ annotations:
 
 ## Deployment
 
-### Initial Setup
+### Automated Deployment (Recommended)
+
+The project includes deployment automation in `scripts/deploy.sh` that handles the entire deployment workflow:
+
+**Features**:
+- Validates prerequisites (`oc` CLI, configuration file)
+- Parses YAML configuration from `config/cluster.yaml`
+- Authenticates to OpenShift cluster (token or password)
+- Validates cluster prerequisites (operators, namespaces)
+- Deploys ArgoCD Application
+- Waits for sync completion (optional)
+- Shows deployment status and verification commands
+
+**Usage**:
+```bash
+# 1. Create configuration from template
+cp config/cluster.yaml.example config/cluster.yaml
+
+# 2. Edit config/cluster.yaml with your values
+#    - cluster.url: OpenShift API URL
+#    - cluster.auth_method: "token" or "password"
+#    - cluster.token: API token (if using token auth)
+#    - Or cluster.username/password (if using password auth)
+
+# 3. Test configuration (optional)
+./scripts/test-deploy.sh
+
+# 4. Deploy
+./scripts/deploy.sh
+```
+
+**Configuration file** (`config/cluster.yaml`):
+- Located in `config/` directory
+- Template: `config/cluster.yaml.example`
+- Actual file is in `.gitignore` (never commit credentials!)
+- Supports token or password authentication
+- Configurable validation options and timeouts
+
+**Script functions**:
+- `check_prerequisites()` - Validates `oc` CLI and config file
+- `load_config()` - Parses YAML with simple awk-based parser
+- `login_cluster()` - Authenticates to OpenShift
+- `validate_cluster()` - Checks required operators and namespaces
+- `deploy_argocd_app()` - Applies ArgoCD Application YAML
+- `wait_for_sync()` - Monitors sync progress with timeout
+- `show_status()` - Displays deployment status and next steps
+
+See [scripts/README.md](scripts/README.md) for detailed documentation.
+
+### Manual Deployment
+
+Alternatively, deploy directly using `oc` CLI:
 
 1. **Deploy ArgoCD Application**:
 ```bash
@@ -606,11 +657,17 @@ See [SECURITY.md](SECURITY.md) for complete security documentation.
 │           └── kustomization.yaml
 ├── argocd/
 │   └── application.yaml
-├── .gitleaks.toml      # LeakTK allowlist for demo secrets
-├── .gitignore
-├── CLAUDE.md           # This file
-├── README.md           # User-facing documentation
-└── SECURITY.md         # Security documentation and secret management
+├── config/
+│   └── cluster.yaml.example    # Cluster configuration template for deployment
+├── scripts/
+│   ├── deploy.sh               # Automated deployment script
+│   ├── test-deploy.sh          # Configuration validation script
+│   └── README.md               # Scripts documentation
+├── .gitleaks.toml              # LeakTK allowlist for demo secrets
+├── .gitignore                  # Git ignore rules (includes config/cluster.yaml)
+├── CLAUDE.md                   # This file
+├── README.md                   # User-facing documentation
+└── SECURITY.md                 # Security documentation and secret management
 ```
 
 **File Naming Convention**: `<namespace>-<kind>-<name>.yaml`
