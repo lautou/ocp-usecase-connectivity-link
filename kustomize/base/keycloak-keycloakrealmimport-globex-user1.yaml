@@ -1,3 +1,13 @@
+# WARNING: This file contains DEMO OAuth client secrets from Red Hat Globex workshop materials.
+# These secrets are FOR TESTING/DEMO PURPOSES ONLY and should NEVER be used in production.
+# Source: https://github.com/rh-soln-pattern-connectivity-link/globex-helm
+#
+# Production deployments should use:
+# - Sealed Secrets (bitnami-labs/sealed-secrets)
+# - External Secrets Operator (external-secrets/external-secrets)
+# - Vault integration
+# - Or generate secrets dynamically via Jobs
+#
 apiVersion: k8s.keycloak.org/v2alpha1
 kind: KeycloakRealmImport
 metadata:
@@ -46,7 +56,7 @@ spec:
       - clientId: client-manager
         enabled: true
         clientAuthenticatorType: client-secret
-        secret: 9JRzL6le4K47JJkcSs6kjd9j2Mmfh1Jc
+        secret: 9JRzL6le4K47JJkcSs6kjd9j2Mmfh1Jc  # DEMO SECRET - hardcoded from upstream Globex materials
         redirectUris:
           - "/*"
         webOrigins:
@@ -86,7 +96,7 @@ spec:
       - clientId: globex-web-gateway
         enabled: true
         clientAuthenticatorType: client-secret
-        secret: "X0zRVwSWDVoUpKFhZwtQmZhDtoJ3MkcI"
+        secret: "X0zRVwSWDVoUpKFhZwtQmZhDtoJ3MkcI"  # DEMO SECRET - for testing only
         redirectUris:
           - "*"
         webOrigins:
@@ -131,7 +141,7 @@ spec:
       - clientId: globex-mobile
         enabled: true
         clientAuthenticatorType: client-secret
-        secret: "Aob7zLHHStk2RCSn2DVwjmhSwoxOwHW7"
+        secret: "Aob7zLHHStk2RCSn2DVwjmhSwoxOwHW7"  # DEMO SECRET - for testing only
         redirectUris:
           - "*"
         webOrigins:

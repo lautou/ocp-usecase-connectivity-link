@@ -87,6 +87,18 @@ This repository contains GitOps manifests for deploying Red Hat Connectivity Lin
      - Patches HTTPRoute hostname from placeholder to `echo.globex.<cluster-domain>`
      - 2 steps, ~5 seconds execution
 
+11. **Keycloak Realm Import** (keycloak namespace)
+   - **KeycloakRealmImport** (`keycloak-keycloakrealmimport-globex-user1.yaml`)
+     - Creates `globex-user1` realm in existing Keycloak instance
+     - Includes 3 OAuth clients: `client-manager`, `globex-web-gateway`, `globex-mobile`
+     - Includes 8 users: 1 realm admin (`user1`), 5 demo users, 2 service accounts
+     - Realm roles: `admin`, `confidential`, `mobile-user`, `web-user`, `user`
+     - Composite role: `default-roles-globex` (includes realm and client roles)
+     - **⚠️ CONTAINS DEMO SECRETS**: OAuth client secrets from Red Hat Globex workshop materials
+     - **NOT FOR PRODUCTION**: See SECURITY.md for proper secret management
+     - References Keycloak CR named `keycloak` in `keycloak` namespace
+     - ArgoCD annotation: `SkipDryRunOnMissingResource=true`
+
 ### GitOps Flow
 
 ```
@@ -107,6 +119,7 @@ Kustomize Base
     ├── AuthPolicy (allow-all for echo-api HTTPRoute)
     ├── RateLimitPolicy (HTTPRoute-level for echo-api, overrides Gateway default)
     ├── Deployment + Service (echo-api)
+    ├── KeycloakRealmImport (Globex demo realm with users and OAuth clients)
     └── Jobs (create AWS credentials, patch hostnames, create DNS resources)
 
 Jobs execute:
@@ -149,6 +162,12 @@ ArgoCD ignores hostname drifts (ignoreDifferences)
 - **Kuadrant Operator** installed (provides TLSPolicy, DNSPolicy, AuthPolicy, RateLimitPolicy CRDs)
   - DNS Operator component must be running (manages DNS records in Route53)
   - Limitador component must be running (manages rate limiting)
+
+### Keycloak (Optional - for demo realm import)
+- **Red Hat Build of Keycloak (RHBK) Operator** installed (if using KeycloakRealmImport)
+  - Keycloak CR named `keycloak` must exist in `keycloak` namespace
+  - Keycloak instance must be running and accessible
+  - **Note**: This is optional - only needed if deploying the demo Globex realm
 
 ## Key Design Decisions
 
@@ -464,6 +483,97 @@ dig +short $HOSTNAME
 curl https://$HOSTNAME
 ```
 
+## Security and Secret Management
+
+### Demo Secrets Warning
+
+⚠️ **This repository contains hardcoded demo secrets** from Red Hat Globex workshop materials in:
+- `kustomize/base/keycloak-keycloakrealmimport-globex-user1.yaml`
+
+These OAuth client secrets are:
+- **FOR DEMO/TESTING ONLY** - Publicly documented and safe for demos
+- **NOT FOR PRODUCTION** - Never use these in production environments
+- From upstream Red Hat demo materials (https://github.com/rh-soln-pattern-connectivity-link/globex-helm)
+
+### Secret Management Approach
+
+**Demo Secrets (Current)**:
+- `.gitleaks.toml` - Allowlist configuration for LeakTK scanner
+- Inline comments marking secrets as `# DEMO SECRET`
+- SECURITY.md file documenting the approach
+- README.md warning banner
+
+**Production Alternatives**:
+
+1. **Sealed Secrets** (Recommended for GitOps):
+   ```yaml
+   apiVersion: bitnami.com/v1alpha1
+   kind: SealedSecret
+   metadata:
+     name: keycloak-client-secrets
+   spec:
+     encryptedData:
+       client-secret: AgBvVGF...  # Encrypted, safe to commit
+   ```
+
+2. **External Secrets Operator**:
+   ```yaml
+   apiVersion: external-secrets.io/v1beta1
+   kind: ExternalSecret
+   metadata:
+     name: keycloak-secrets
+   spec:
+     secretStoreRef:
+       name: vault-backend
+     data:
+       - secretKey: client-secret
+         remoteRef:
+           key: prod/keycloak/client-manager
+   ```
+
+3. **Dynamic Generation via Jobs**:
+   - Generate secrets at runtime (see existing Jobs pattern)
+   - Store in Kubernetes Secrets
+   - Never commit to Git
+
+4. **HashiCorp Vault Integration**:
+   - Vault Agent Injector
+   - External Secrets Operator with Vault backend
+
+### LeakTK Configuration
+
+The repository includes `.gitleaks.toml` to handle false positives from Red Hat's security scanner:
+
+```toml
+[allowlist]
+regexes = [
+    '''\b9JRzL6le4K47JJkcSs6kjd9j2Mmfh1Jc\b''',  # Demo secrets
+    '''\bX0zRVwSWDVoUpKFhZwtQmZhDtoJ3MkcI\b''',
+    '''\bAob7zLHHStk2RCSn2DVwjmhSwoxOwHW7\b''',
+]
+```
+
+**Testing the allowlist**:
+```bash
+# Download LeakTK scanner for your architecture
+# From: https://source.redhat.com/departments/it/it_information_security/leaktk
+
+# Test the configuration
+./leaktk scan --format=human /path/to/repo
+
+# Should show 0 findings if allowlist is working
+```
+
+**Prevention**:
+```bash
+# Install rh-pre-commit to prevent future leaks
+pip install rh-pre-commit
+cd /path/to/repo
+rh-pre-commit install
+```
+
+See [SECURITY.md](SECURITY.md) for complete security documentation.
+
 ## Repository Structure
 
 ```
@@ -485,6 +595,7 @@ curl https://$HOSTNAME
 │   │   ├── ingress-gateway-gateway-prod-web.yaml
 │   │   ├── ingress-gateway-ratelimitpolicy-prod-web.yaml
 │   │   ├── ingress-gateway-tlspolicy-prod-web.yaml
+│   │   ├── keycloak-keycloakrealmimport-globex-user1.yaml
 │   │   ├── openshift-gitops-job-aws-credentials.yaml
 │   │   ├── openshift-gitops-job-echo-api-httproute.yaml
 │   │   ├── openshift-gitops-job-gateway-prod-web.yaml
@@ -495,9 +606,11 @@ curl https://$HOSTNAME
 │           └── kustomization.yaml
 ├── argocd/
 │   └── application.yaml
+├── .gitleaks.toml      # LeakTK allowlist for demo secrets
 ├── .gitignore
 ├── CLAUDE.md           # This file
-└── README.md           # User-facing documentation
+├── README.md           # User-facing documentation
+└── SECURITY.md         # Security documentation and secret management
 ```
 
 **File Naming Convention**: `<namespace>-<kind>-<name>.yaml`
@@ -508,6 +621,7 @@ curl https://$HOSTNAME
   - `cluster-ns-echo-api.yaml` (Namespace, cluster-scoped)
   - `ingress-gateway-gateway-prod-web.yaml` (Gateway in ingress-gateway namespace)
   - `echo-api-httproute-echo-api.yaml` (HTTPRoute in echo-api namespace)
+  - `keycloak-keycloakrealmimport-globex-user1.yaml` (KeycloakRealmImport in keycloak namespace)
   - `openshift-gitops-job-globex-ns-delegation.yaml` (Job in openshift-gitops namespace)
 
 ## Configuration
@@ -791,6 +905,18 @@ echo | openssl s_client -connect $HOSTNAME:443 -servername $HOSTNAME 2>/dev/null
 - **Access control**: Each HTTPRoute MUST have its own AuthPolicy to allow access
 - **Security pattern**: Deny-by-default prevents accidental exposure of services
 - **Echo API access**: Includes allow-all AuthPolicy (`echo-api-authpolicy-echo-api.yaml`) for demonstration
+
+### Security and Demo Secrets
+- **⚠️ DEMO SECRETS IN GIT**: This repository contains hardcoded OAuth client secrets in `keycloak-keycloakrealmimport-globex-user1.yaml`
+- **NOT FOR PRODUCTION**: These are publicly known demo secrets from Red Hat Globex workshop materials
+- **Source**: https://github.com/rh-soln-pattern-connectivity-link/globex-helm
+- **LeakTK allowlist**: `.gitleaks.toml` file configures Red Hat's security scanner to ignore these known demo secrets
+- **Testing**: Run `./leaktk scan --format=human .` to verify allowlist (should show 0 findings)
+- **Prevention**: Install `rh-pre-commit` hooks to prevent accidental secret commits
+- **Production alternatives**: Use Sealed Secrets, External Secrets Operator, Vault, or dynamic generation via Jobs
+- **Documentation**: See `SECURITY.md` for complete secret management guidance
+- **Inline markers**: All demo secrets marked with `# DEMO SECRET` comments
+- **File header**: KeycloakRealmImport includes warning header about demo secrets
 
 ## Related Projects
 

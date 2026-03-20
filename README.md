@@ -2,6 +2,8 @@
 
 GitOps repository for automating Red Hat Connectivity Link infrastructure on OpenShift using AWS Route53, ACK, Istio Gateway API, and Kuadrant.
 
+> **⚠️ IMPORTANT**: This is a **demo/testing repository** containing hardcoded secrets from Red Hat Globex workshop materials. These secrets are publicly known and **should NEVER be used in production**. See [SECURITY.md](SECURITY.md) for details on proper secret management.
+
 ## Overview
 
 This project automates the deployment of:
@@ -21,6 +23,7 @@ Everything is managed via GitOps using ArgoCD with **100% dynamic configuration*
 6. **Authentication** - Kuadrant AuthPolicy with deny-by-default at Gateway level
 7. **Rate Limiting** - Kuadrant RateLimitPolicy at Gateway level (5 req/10s)
 8. **Echo API Application** - Demo service with allow-all AuthPolicy and HTTPRoute-level RateLimitPolicy (10 req/12s)
+9. **Keycloak Realm Import** - Optional Globex demo realm with users and OAuth clients (for testing/demo only)
 
 ## Prerequisites
 
@@ -45,6 +48,11 @@ Everything is managed via GitOps using ArgoCD with **100% dynamic configuration*
 - **cert-manager** - for automatic TLS certificate management
   - ClusterIssuer named `cluster` must exist (configured for Let's Encrypt)
 - **Kuadrant Operator** - provides DNS, TLS, Auth, and RateLimit policies
+
+### Keycloak (Optional - for demo realm)
+- **Red Hat Build of Keycloak (RHBK) Operator** - only if using Keycloak realm import
+  - Keycloak CR named `keycloak` must exist in `keycloak` namespace
+  - Only needed for deploying the demo Globex realm with test users and OAuth clients
 
 ## Quick Start
 

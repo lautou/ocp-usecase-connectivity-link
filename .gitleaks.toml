@@ -1,0 +1,27 @@
+# Gitleaks configuration for handling demo secrets
+# Documentation: https://source.redhat.com/departments/it/it_information_security/leaktk/leaktk_guides/false_positives_in_git_repos
+
+# Allow gitleaks to use its built in rules.
+# This is optional for LeakTK which always applies its rules.
+[extend]
+useDefault = true
+
+[allowlist]
+# Keycloak demo realm OAuth client secrets from Red Hat Globex workshop materials.
+# These are publicly documented demo secrets and should not be flagged.
+# Source: https://github.com/rh-soln-pattern-connectivity-link/globex-helm
+regexes = [
+    # client-manager secret (hardcoded in upstream Globex demo)
+    '''\b9JRzL6le4K47JJkcSs6kjd9j2Mmfh1Jc\b''',
+
+    # globex-web-gateway demo secret
+    '''\bX0zRVwSWDVoUpKFhZwtQmZhDtoJ3MkcI\b''',
+
+    # globex-mobile demo secret
+    '''\bAob7zLHHStk2RCSn2DVwjmhSwoxOwHW7\b''',
+]
+
+# Alternative: You can also ignore by file path
+# paths = [
+#     '''^kustomize/base/keycloak-keycloakrealmimport-globex-user1\.yaml$''',
+# ]
