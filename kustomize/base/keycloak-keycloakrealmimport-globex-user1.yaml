@@ -42,7 +42,6 @@ spec:
           composites:
             realm:
               - offline_access
-              - uma_authorization
             client:
               account:
                 - view-profile
