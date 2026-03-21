@@ -21,6 +21,7 @@ resources:
 
   # globex namespace resources
   - globex-secret-globex-db.yaml
+  - globex-service-globex-db.yaml
   - globex-serviceaccount-globex-db.yaml
 
   # keycloak namespace resources (Keycloak realm import)
