@@ -24,6 +24,13 @@ spec:
       kind: HTTPRoute
       jsonPointers:
         - /spec/hostnames
+    - group: apps
+      kind: Deployment
+      name: globex-web
+      namespace: globex
+      jsonPointers:
+        - /spec/template/spec/containers/0/env/10/value
+        - /spec/template/spec/containers/0/env/12/value
   syncPolicy:
     automated:
       prune: true

@@ -1,0 +1,63 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: globex-web-env-setup
+  namespace: openshift-gitops
+  labels:
+    app.kubernetes.io/name: globex-web-env-setup
+    app.kubernetes.io/part-of: connectivity-link
+  annotations:
+    argocd.argoproj.io/sync-options: Force=true
+spec:
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: globex-web-env-setup
+    spec:
+      serviceAccountName: openshift-gitops-argocd-application-controller
+      restartPolicy: Never
+      containers:
+        - name: patch-env
+          image: registry.redhat.io/openshift4/ose-cli:latest
+          command:
+            - /bin/bash
+            - -c
+            - |
+              set -e
+
+              echo "========================================"
+              echo "Globex Web Environment Variables Patch"
+              echo "========================================"
+              echo ""
+
+              # Get OpenShift apps domain
+              echo "[1/3] Getting OpenShift apps domain..."
+              APPS_DOMAIN=$(oc get ingresscontroller default -n openshift-ingress-operator -o jsonpath='{.status.domain}')
+              echo "✓ Apps domain: ${APPS_DOMAIN}"
+              echo ""
+
+              # Construct URLs
+              echo "[2/3] Constructing SSO URLs..."
+              KEYCLOAK_URL="https://keycloak-keycloak.${APPS_DOMAIN}/realms/globex-user1"
+              LOGOUT_URI="https://globex-web-globex.${APPS_DOMAIN}/home"
+              echo "✓ Keycloak SSO Authority: ${KEYCLOAK_URL}"
+              echo "✓ Logout redirect URI: ${LOGOUT_URI}"
+              echo ""
+
+              # Patch globex-web Deployment
+              echo "[3/3] Patching globex-web Deployment environment variables..."
+              oc patch deployment globex-web -n globex --type=json -p="[
+                {\"op\": \"replace\", \"path\": \"/spec/template/spec/containers/0/env/10/value\", \"value\": \"${KEYCLOAK_URL}\"},
+                {\"op\": \"replace\", \"path\": \"/spec/template/spec/containers/0/env/12/value\", \"value\": \"${LOGOUT_URI}\"}
+              ]"
+              echo ""
+
+              echo "========================================"
+              echo "✅ Environment variables updated!"
+              echo "========================================"
+              echo ""
+              echo "📋 Summary:"
+              echo "  Deployment: globex-web"
+              echo "  Namespace: globex"
+              echo "  SSO Authority: ${KEYCLOAK_URL}"
+              echo "  Logout URI: ${LOGOUT_URI}"

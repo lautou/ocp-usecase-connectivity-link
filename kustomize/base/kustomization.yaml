@@ -23,6 +23,7 @@ resources:
   - globex-deployment-globex-db.yaml
   - globex-deployment-globex-store-app.yaml
   - globex-deployment-globex-web.yaml
+  - globex-route-globex-web.yaml
   - globex-secret-globex-db.yaml
   - globex-service-globex-db.yaml
   - globex-service-globex-store-app.yaml
@@ -46,3 +47,4 @@ resources:
   - openshift-gitops-job-echo-api-httproute.yaml
   - openshift-gitops-job-gateway-prod-web.yaml
   - openshift-gitops-job-globex-ns-delegation.yaml
+  - openshift-gitops-job-globex-web-env.yaml
