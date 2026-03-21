@@ -27,8 +27,8 @@ spec:
             - -c
             - |
               set -e
-              echo "Copying application files to shared volume..."
-              cp -r /opt/app-root/src/dist/* /app/
+              echo "Copying browser files to shared volume..."
+              cp -r /opt/app-root/src/dist/globex-web/browser/* /app/
 
               echo "Getting cluster domain from environment..."
               APPS_DOMAIN="${SSO_AUTHORITY#*://}"
@@ -53,7 +53,7 @@ spec:
             - containerPort: 8080
           volumeMounts:
             - name: app-files
-              mountPath: /opt/app-root/src/dist
+              mountPath: /opt/app-root/src/dist/globex-web/browser
           env:
             - name: NODE_ENV
               value: "prod"
