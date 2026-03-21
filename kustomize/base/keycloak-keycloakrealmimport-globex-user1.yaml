@@ -98,6 +98,9 @@ spec:
         secret: "X0zRVwSWDVoUpKFhZwtQmZhDtoJ3MkcI"  # DEMO SECRET - for testing only
         redirectUris:
           - "*"
+          - "/*"
+          - "http://localhost:4200/*"
+          - "https://globex-web-globex.apps.*.opentlc.com/*"
         webOrigins:
           - "*"
           - "+"
