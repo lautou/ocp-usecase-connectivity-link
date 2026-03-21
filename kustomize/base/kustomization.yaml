@@ -21,14 +21,18 @@ resources:
 
   # globex namespace resources
   - globex-deployment-globex-db.yaml
+  - globex-deployment-globex-mobile-gateway.yaml
   - globex-deployment-globex-store-app.yaml
   - globex-deployment-globex-web.yaml
+  - globex-route-globex-mobile-gateway.yaml
   - globex-route-globex-web.yaml
   - globex-secret-globex-db.yaml
   - globex-service-globex-db.yaml
+  - globex-service-globex-mobile-gateway.yaml
   - globex-service-globex-store-app.yaml
   - globex-service-globex-web.yaml
   - globex-serviceaccount-globex-db.yaml
+  - globex-serviceaccount-globex-mobile-gateway.yaml
   - globex-serviceaccount-globex-store-app.yaml
   - globex-serviceaccount-globex-web.yaml
 
