@@ -1,0 +1,7 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: globex
+  labels:
+    app.kubernetes.io/name: globex
+    app.kubernetes.io/part-of: connectivity-link

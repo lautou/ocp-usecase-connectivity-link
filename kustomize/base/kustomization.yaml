@@ -9,6 +9,7 @@ resources:
 
   # Namespaces
   - cluster-ns-echo-api.yaml
+  - cluster-ns-globex.yaml
   - cluster-ns-ingress-gateway.yaml
 
   # echo-api namespace resources
@@ -17,6 +18,9 @@ resources:
   - echo-api-httproute-echo-api.yaml
   - echo-api-ratelimitpolicy-echo-api-rlp.yaml
   - echo-api-service-echo-api.yaml
+
+  # globex namespace resources
+  - globex-secret-globex-db.yaml
 
   # keycloak namespace resources (Keycloak realm import)
   - keycloak-keycloakrealmimport-globex-user1.yaml
