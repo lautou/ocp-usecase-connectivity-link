@@ -20,6 +20,7 @@ resources:
   - echo-api-service-echo-api.yaml
 
   # globex namespace resources
+  - globex-deployment-globex-db.yaml
   - globex-secret-globex-db.yaml
   - globex-service-globex-db.yaml
   - globex-serviceaccount-globex-db.yaml
