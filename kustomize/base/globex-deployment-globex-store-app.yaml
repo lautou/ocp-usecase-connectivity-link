@@ -7,8 +7,6 @@ metadata:
     app.kubernetes.io/name: globex-store-app
     app.kubernetes.io/instance: globex-user1
     app.kubernetes.io/version: "latest"
-  annotations:
-    app.openshift.io/connects-to: '[{"apiVersion":"apps/v1","kind":"Deployment","name":"globex-db"}]'
 spec:
   selector:
     matchLabels:
