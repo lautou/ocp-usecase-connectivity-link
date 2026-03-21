@@ -19,11 +19,41 @@ spec:
         app.kubernetes.io/instance: globex-user1
     spec:
       serviceAccountName: globex-web
+      initContainers:
+        - name: patch-placeholder
+          image: quay.io/cloud-architecture-workshop/globex-web:latest
+          command:
+            - /bin/sh
+            - -c
+            - |
+              set -e
+              echo "Copying application files to shared volume..."
+              cp -r /opt/app-root/src/dist/* /app/
+
+              echo "Getting cluster domain from environment..."
+              APPS_DOMAIN="${SSO_AUTHORITY#*://}"
+              APPS_DOMAIN="${APPS_DOMAIN#keycloak-keycloak.}"
+              APPS_DOMAIN="${APPS_DOMAIN%/realms/*}"
+              echo "Apps domain: ${APPS_DOMAIN}"
+
+              echo "Patching JavaScript files..."
+              find /app -name '*.js' -type f -exec sed -i "s/placeholder/${APPS_DOMAIN}/g" {} +
+
+              echo "✓ Placeholder domains replaced with ${APPS_DOMAIN}"
+          env:
+            - name: SSO_AUTHORITY
+              value: "https://keycloak-keycloak.placeholder/realms/globex-user1"
+          volumeMounts:
+            - name: app-files
+              mountPath: /app
       containers:
         - name: globex-web
           image: quay.io/cloud-architecture-workshop/globex-web:latest
           ports:
             - containerPort: 8080
+          volumeMounts:
+            - name: app-files
+              mountPath: /opt/app-root/src/dist
           env:
             - name: NODE_ENV
               value: "prod"
@@ -74,3 +104,6 @@ spec:
             requests:
               cpu: 100m
               memory: 128Mi
+      volumes:
+        - name: app-files
+          emptyDir: {}

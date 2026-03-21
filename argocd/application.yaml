@@ -29,6 +29,7 @@ spec:
       name: globex-web
       namespace: globex
       jsonPointers:
+        - /spec/template/spec/initContainers/0/env/0/value
         - /spec/template/spec/containers/0/env/10/value
         - /spec/template/spec/containers/0/env/11/value
     - group: apps
