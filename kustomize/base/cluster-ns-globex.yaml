@@ -5,3 +5,4 @@ metadata:
   labels:
     app.kubernetes.io/name: globex
     app.kubernetes.io/part-of: connectivity-link
+    argocd.argoproj.io/managed-by: openshift-gitops
