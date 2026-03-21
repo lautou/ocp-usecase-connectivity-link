@@ -210,6 +210,8 @@ spec:
 
       - username: user1
         email: user1@email.com
+        firstName: Admin
+        lastName: User
         enabled: true
         credentials:
           - type: password
@@ -226,6 +228,8 @@ spec:
 
       - username: asilva
         email: asilva@email.com
+        firstName: Ana
+        lastName: Silva
         enabled: true
         credentials:
           - type: password
@@ -238,6 +242,8 @@ spec:
 
       - username: mmiller
         email: mmiller@topvibe.com
+        firstName: Mike
+        lastName: Miller
         enabled: true
         credentials:
           - type: password
@@ -250,6 +256,8 @@ spec:
 
       - username: asanders
         email: asanders@topgreatest.com
+        firstName: Alice
+        lastName: Sanders
         enabled: true
         credentials:
           - type: password
@@ -262,6 +270,8 @@ spec:
 
       - username: cjones
         email: cjones@zmail.com
+        firstName: Chris
+        lastName: Jones
         enabled: true
         credentials:
           - type: password
@@ -274,6 +284,8 @@ spec:
 
       - username: pwong
         email: pwong@firstsimple.com
+        firstName: Patricia
+        lastName: Wong
         enabled: true
         credentials:
           - type: password
