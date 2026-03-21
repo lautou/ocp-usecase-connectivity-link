@@ -48,7 +48,7 @@ spec:
               echo "[3/4] Patching globex-web Deployment environment variables..."
               oc patch deployment globex-web -n globex --type=json -p="[
                 {\"op\": \"replace\", \"path\": \"/spec/template/spec/containers/0/env/10/value\", \"value\": \"${KEYCLOAK_URL}\"},
-                {\"op\": \"replace\", \"path\": \"/spec/template/spec/containers/0/env/12/value\", \"value\": \"${LOGOUT_URI}\"}
+                {\"op\": \"replace\", \"path\": \"/spec/template/spec/containers/0/env/11/value\", \"value\": \"${LOGOUT_URI}\"}
               ]"
               echo "✓ globex-web patched"
               echo ""
