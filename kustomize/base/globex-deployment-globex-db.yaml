@@ -24,10 +24,8 @@ spec:
       containers:
         - name: globex-db
           image: quay.io/cloud-architecture-workshop/globex-store-db:latest
-          imagePullPolicy: IfNotPresent
           ports:
             - containerPort: 5432
-              protocol: TCP
           env:
             - name: POSTGRESQL_USER
               valueFrom:
