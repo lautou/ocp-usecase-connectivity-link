@@ -68,9 +68,10 @@ This repository contains GitOps manifests for deploying Red Hat Connectivity Lin
    - **Job #1: AWS Credentials Setup** (`openshift-gitops-job-aws-credentials.yaml`)
      - Extracts AWS credentials from `kube-system/aws-creds`
      - Extracts AWS region from cluster infrastructure
-     - Creates Secret `aws-credentials` with type `kuadrant.io/aws`
-     - Required for DNSPolicy to manage Route53 records
-     - 3 steps, ~5 seconds execution
+     - Creates Secret `aws-credentials` with type `kuadrant.io/aws` (for DNSPolicy)
+     - Creates Secret `aws-acme` with type `Opaque` (for cert-manager DNS-01 challenges)
+     - Required for DNSPolicy to manage Route53 records and cert-manager to validate certificates
+     - 4 steps, ~5 seconds execution
 
    - **Job #2: DNS Setup** (`openshift-gitops-job-globex-ns-delegation.yaml`)
      - Creates HostedZone CR for `globex.<cluster-domain>`
@@ -123,7 +124,7 @@ Kustomize Base
     └── Jobs (create AWS credentials, patch hostnames, create DNS resources)
 
 Jobs execute:
-    Job #1 (AWS) → Creates aws-credentials Secret (type: kuadrant.io/aws)
+    Job #1 (AWS) → Creates aws-credentials (DNSPolicy) + aws-acme (cert-manager) Secrets
     Job #2 (DNS) → Creates HostedZone + RecordSet in ack-system
     Job #3 (Gateway) → Patches Gateway hostname
     Job #4 (HTTPRoute) → Patches HTTPRoute hostname
@@ -157,6 +158,8 @@ ArgoCD ignores hostname drifts (ignoreDifferences)
 ### Certificate Management
 - **cert-manager** installed cluster-wide
   - ClusterIssuer named `cluster` must exist (configured for Let's Encrypt)
+  - ClusterIssuer must use DNS-01 solver with Route53 (for wildcard certificates)
+  - Expects AWS credentials in Secret `aws-acme` (created by Job #1)
 
 ### Kuadrant
 - **Kuadrant Operator** installed (provides TLSPolicy, DNSPolicy, AuthPolicy, RateLimitPolicy CRDs)
@@ -725,6 +728,7 @@ Everything else is 100% dynamic → Works across different clusters/environments
 
 **In `ingress-gateway` namespace** (created by Job #1):
 - Secret `aws-credentials` - AWS credentials for DNSPolicy (type: `kuadrant.io/aws`)
+- Secret `aws-acme` - AWS credentials for cert-manager DNS-01 challenges (type: `Opaque`)
 
 **In `ack-system` namespace** (created by Job #2):
 - HostedZone `globex` - Route53 zone for `globex.<cluster-domain>`
@@ -956,6 +960,8 @@ echo | openssl s_client -connect $HOSTNAME:443 -servername $HOSTNAME 2>/dev/null
 - **File naming**: Follows convention `<namespace>-<kind>-<name>.yaml` (use `cluster-` prefix for cluster-scoped resources)
 - **ArgoCD drift**: ignoreDifferences configured to ignore hostname fields (managed by Jobs)
 - **CRITICAL - Secret type**: AWS credentials Secret MUST have type `kuadrant.io/aws` (not `Opaque`) for DNSPolicy to work
+- **cert-manager DNS-01**: Requires `aws-acme` Secret (type `Opaque`) for wildcard certificate validation via Route53 TXT records
+- **Two AWS Secrets**: Job #1 creates both `aws-credentials` (DNSPolicy) and `aws-acme` (cert-manager) from same credentials
 - **DNSPolicy automation**: Automatically creates/updates DNS records in Route53 when Gateway Load Balancer changes
 - **Internet exposure**: DNSPolicy is what makes echo-api accessible from Internet (creates CNAME → Load Balancer)
 - **CRITICAL - AuthPolicy deny-by-default**: Gateway has AuthPolicy that blocks all traffic by default (HTTP 403)

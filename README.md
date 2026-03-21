@@ -47,6 +47,8 @@ Everything is managed via GitOps using ArgoCD with **100% dynamic configuration*
 ### Certificate & Policy Management
 - **cert-manager** - for automatic TLS certificate management
   - ClusterIssuer named `cluster` must exist (configured for Let's Encrypt)
+  - ClusterIssuer must use DNS-01 solver with Route53 (for wildcard certificates)
+  - Expects AWS credentials in Secret `aws-acme` (created by deployment Job)
 - **Kuadrant Operator** - provides DNS, TLS, Auth, and RateLimit policies
 
 ### Keycloak (Optional - for demo realm)
@@ -349,11 +351,15 @@ Everything else adapts to the cluster automatically.
 1. Extract AWS credentials from `kube-system/aws-creds`
 2. Extract AWS region from cluster infrastructure
 3. Create Secret `aws-credentials` in `ingress-gateway` namespace with type `kuadrant.io/aws`
+4. Create Secret `aws-acme` in `ingress-gateway` namespace with type `Opaque`
 
 **Creates**:
 - Secret `aws-credentials` in `ingress-gateway` namespace (required by DNSPolicy)
+- Secret `aws-acme` in `ingress-gateway` namespace (required by cert-manager for DNS-01 challenges)
 
-**Important**: The Secret type MUST be `kuadrant.io/aws` for Kuadrant to detect the AWS Route53 provider.
+**Important**:
+- The `aws-credentials` Secret type MUST be `kuadrant.io/aws` for Kuadrant to detect the AWS Route53 provider
+- The `aws-acme` Secret is used by cert-manager ClusterIssuer to create TXT records for wildcard certificate validation
 
 ### Job #2: DNS Setup (globex-ns-delegation)
 
