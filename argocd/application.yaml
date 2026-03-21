@@ -31,6 +31,12 @@ spec:
       jsonPointers:
         - /spec/template/spec/containers/0/env/10/value
         - /spec/template/spec/containers/0/env/12/value
+    - group: apps
+      kind: Deployment
+      name: globex-mobile-gateway
+      namespace: globex
+      jsonPointers:
+        - /spec/template/spec/containers/0/env/1/value
   syncPolicy:
     automated:
       prune: true
