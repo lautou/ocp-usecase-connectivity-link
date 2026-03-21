@@ -100,6 +100,48 @@ This repository contains GitOps manifests for deploying Red Hat Connectivity Lin
      - References Keycloak CR named `keycloak` in `keycloak` namespace
      - ArgoCD annotation: `SkipDryRunOnMissingResource=true`
 
+12. **Globex Web Application** (globex namespace)
+   - **Deployment** (`globex-deployment-globex-web.yaml`) - Angular SSR application with OAuth integration
+   - **Service** (`globex-service-globex-web.yaml`) - ClusterIP exposing port 8080
+   - **Route** (`globex-route-globex-web.yaml`) - OpenShift Route for external access
+   - **ServiceAccount** (`globex-serviceaccount-globex-web.yaml`)
+   - **Image**: `quay.io/cloud-architecture-workshop/globex-web:latest`
+   - **Architecture**: Angular 15 with Server-Side Rendering (SSR), Node.js Express server
+   - **OAuth Configuration**:
+     - Uses OpenID Connect implicit flow with Keycloak
+     - Client ID: `globex-web-gateway` (configured via `SSO_CUSTOM_CONFIG` env var)
+     - **CRITICAL**: Only 4 SSO environment variables are needed:
+       - `SSO_CUSTOM_CONFIG`: "globex-web-gateway" (maps to Keycloak client_id)
+       - `SSO_AUTHORITY`: Keycloak realm URL (server-side)
+       - `SSO_REDIRECT_LOGOUT_URI`: Logout redirect URL
+       - `SSO_LOG_LEVEL`: Log verbosity level
+     - **DO NOT add `SSO_CLIENT_ID`**: Conflicts with `SSO_CUSTOM_CONFIG` and breaks session management
+   - **Runtime Patching Pattern**:
+     - InitContainer patches client-side JavaScript bundle at runtime
+     - **Problem**: Placeholder domains are baked into the JavaScript bundle at build time
+     - **Solution**: InitContainer copies browser files to shared emptyDir volume and replaces placeholders
+     - **Implementation**:
+       - InitContainer: `patch-placeholder`
+         - Copies `/opt/app-root/src/dist/globex-web/browser/*` to shared volume
+         - Extracts cluster domain from `SSO_AUTHORITY` environment variable
+         - Runs `sed -i "s/placeholder/${APPS_DOMAIN}/g"` on all `.js` files
+       - Main container: Mounts shared volume at `/opt/app-root/src/dist/globex-web/browser`
+       - Volume: emptyDir named `app-files`
+     - **Why needed**: OAuth redirect_uri must match actual cluster domain for session management
+     - **CRITICAL**: Mount only at `/opt/app-root/src/dist/globex-web/browser`, NOT `/opt/app-root/src/dist`
+       - Server code in `/opt/app-root/src/dist/globex-web/server` must remain unchanged
+       - Mounting at parent directory breaks Node.js server (CrashLoopBackOff)
+   - **Job Integration** (`openshift-gitops-job-globex-env.yaml`):
+     - Patches both initContainer and main container `SSO_AUTHORITY` values
+     - Patches main container `SSO_REDIRECT_LOGOUT_URI` value
+     - Uses JSON patch with indices:
+       - `/spec/template/spec/initContainers/0/env/0/value` → SSO_AUTHORITY
+       - `/spec/template/spec/containers/0/env/10/value` → SSO_AUTHORITY
+       - `/spec/template/spec/containers/0/env/11/value` → SSO_REDIRECT_LOGOUT_URI
+   - **ArgoCD ignoreDifferences**: Configured to ignore runtime-patched environment variables
+     - InitContainer: `/spec/template/spec/initContainers/0/env/0/value`
+     - Main container: `/spec/template/spec/containers/0/env/10/value`, `/spec/template/spec/containers/0/env/11/value`
+
 ### GitOps Flow
 
 ```
@@ -937,6 +979,91 @@ curl -v https://$HOSTNAME
 echo | openssl s_client -connect $HOSTNAME:443 -servername $HOSTNAME 2>/dev/null | openssl x509 -noout -subject -issuer
 ```
 
+### Globex Web OAuth Login Completes But Session Not Maintained
+
+**Symptoms**:
+- User clicks "Login", redirected to Keycloak, authenticates successfully
+- Redirected back to Globex application
+- "Login" button remains (should change to "Logout")
+- Session is not maintained, user not logged in
+- Browser redirects to `globex-web-globex.placeholder` domain (non-existent)
+
+**Root Causes**:
+
+1. **SSO_CLIENT_ID environment variable conflict** (if present):
+   - The application uses `SSO_CUSTOM_CONFIG` to specify the client_id
+   - Adding `SSO_CLIENT_ID` creates a conflict and breaks session management
+   - **Solution**: Remove `SSO_CLIENT_ID` from deployment, only use 4 SSO env vars
+
+2. **Placeholder domain hardcoded in JavaScript bundle**:
+   - Environment variables only affect server-side code (Node.js)
+   - Client-side JavaScript has placeholder domains baked in at build time
+   - OAuth redirect_uri in browser uses `https://globex-web-globex.placeholder/...`
+   - After Keycloak auth, redirect fails because domain doesn't exist
+   - **Solution**: Use initContainer to patch JavaScript files at runtime
+
+**Fix**:
+
+```bash
+# 1. Verify only 4 SSO environment variables are present
+oc get deployment globex-web -n globex -o jsonpath='{.spec.template.spec.containers[0].env}' | jq 'map(select(.name | startswith("SSO_")))'
+# Should show: SSO_CUSTOM_CONFIG, SSO_AUTHORITY, SSO_REDIRECT_LOGOUT_URI, SSO_LOG_LEVEL
+
+# 2. Check if SSO_CLIENT_ID is present (WRONG - should be removed)
+oc get deployment globex-web -n globex -o jsonpath='{.spec.template.spec.containers[0].env}' | jq 'map(select(.name == "SSO_CLIENT_ID"))'
+# Should return empty array []
+
+# 3. Verify initContainer is present to patch JavaScript files
+oc get deployment globex-web -n globex -o jsonpath='{.spec.template.spec.initContainers[0].name}'
+# Should show: patch-placeholder
+
+# 4. Check initContainer logs to verify patching worked
+oc logs -n globex -l app.kubernetes.io/name=globex-web -c patch-placeholder --tail=10
+# Should show: "Apps domain: apps.<cluster-domain>" and "Placeholder domains replaced"
+
+# 5. Verify placeholder is removed from JavaScript
+curl -sk 'https://globex-web-globex.apps.<cluster-domain>/main.js' | grep -o 'placeholder' | wc -l
+# Should return: 0
+
+# 6. Verify actual cluster domain is present in JavaScript
+curl -sk 'https://globex-web-globex.apps.<cluster-domain>/main.js' | grep -o 'apps\.<cluster-domain>' | head -3
+# Should return actual domain multiple times
+
+# 7. If initContainer is missing, check ArgoCD sync status
+oc get application.argoproj.io usecase-connectivity-link -n openshift-gitops -o jsonpath='{.status.sync.status}'
+
+# 8. If sync is OK but initContainer missing, force re-sync
+oc annotate application.argoproj.io usecase-connectivity-link -n openshift-gitops argocd.argoproj.io/refresh=normal --overwrite
+
+# 9. If everything looks correct, restart deployment to apply changes
+oc rollout restart deployment globex-web -n globex
+oc rollout status deployment globex-web -n globex --timeout=3m
+```
+
+**Important Notes**:
+- The globex-web is an Angular 15 SSR (Server-Side Rendering) application
+- Environment variables are injected server-side but client-side code is pre-built
+- The initContainer pattern is required to patch client-side JavaScript at runtime
+- InitContainer must mount at `/opt/app-root/src/dist/globex-web/browser` (NOT parent directory)
+- Mounting at `/opt/app-root/src/dist` breaks the Node.js server (CrashLoopBackOff)
+- The Job `globex-env-setup` patches both initContainer and main container env vars
+- ArgoCD ignoreDifferences must include initContainer env var path to avoid drift
+
+**Debugging OAuth Flow**:
+
+```bash
+# Check Keycloak client configuration
+oc get keycloakrealmimport globex-user1 -n keycloak -o jsonpath='{.spec.realm.clients[?(@.clientId=="globex-web-gateway")]}' | jq '{clientId, redirectUris, webOrigins, implicitFlowEnabled}'
+
+# Test login with browser developer tools:
+# 1. Open browser DevTools → Network tab
+# 2. Click "Login" button
+# 3. Check the Keycloak redirect URL - should contain:
+#    redirect_uri=https://globex-web-globex.apps.<actual-domain>/...
+# 4. After auth, check if redirect_uri matches the current domain
+# 5. Check Application → Cookies for Keycloak session cookies
+```
+
 ## Important Notes
 
 ### Gateway API and Control Plane
@@ -968,6 +1095,18 @@ echo | openssl s_client -connect $HOSTNAME:443 -servername $HOSTNAME 2>/dev/null
 - **Access control**: Each HTTPRoute MUST have its own AuthPolicy to allow access
 - **Security pattern**: Deny-by-default prevents accidental exposure of services
 - **Echo API access**: Includes allow-all AuthPolicy (`echo-api-authpolicy-echo-api.yaml`) for demonstration
+
+### Globex Web Application
+- **CRITICAL - SSO Environment Variables**: Only 4 SSO env vars are needed: `SSO_CUSTOM_CONFIG`, `SSO_AUTHORITY`, `SSO_REDIRECT_LOGOUT_URI`, `SSO_LOG_LEVEL`
+- **DO NOT add SSO_CLIENT_ID**: Conflicts with `SSO_CUSTOM_CONFIG` and breaks OAuth session management
+- **CRITICAL - InitContainer Pattern**: Required to patch client-side JavaScript with actual cluster domain
+- **Angular SSR Architecture**: Environment variables only affect server-side code, not pre-built JavaScript bundle
+- **Mount Path**: InitContainer must mount at `/opt/app-root/src/dist/globex-web/browser` (NOT parent directory)
+- **Mounting at wrong path**: Will break Node.js server causing CrashLoopBackOff
+- **Runtime Patching**: InitContainer extracts cluster domain from `SSO_AUTHORITY` and runs `sed` to replace placeholder
+- **ArgoCD Drift**: Must configure ignoreDifferences for initContainer env var to avoid sync conflicts
+- **Job Integration**: `globex-env-setup` Job patches both initContainer and main container environment variables
+- **Session Management**: OAuth redirect_uri must match actual cluster domain for session cookies to work
 
 ### Security and Demo Secrets
 - **⚠️ DEMO SECRETS IN GIT**: This repository contains hardcoded OAuth client secrets in `keycloak-keycloakrealmimport-globex-user1.yaml`
