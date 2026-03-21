@@ -29,8 +29,8 @@ spec:
       name: globex-web
       namespace: globex
       jsonPointers:
-        - /spec/template/spec/containers/0/env/9/value
-        - /spec/template/spec/containers/0/env/11/value
+        - /spec/template/spec/containers/0/env/10/value
+        - /spec/template/spec/containers/0/env/12/value
     - group: apps
       kind: Deployment
       name: globex-mobile-gateway
