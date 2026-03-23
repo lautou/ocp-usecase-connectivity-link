@@ -15,6 +15,7 @@ This repository contains GitOps manifests for deploying Red Hat Connectivity Lin
 1. **Namespaces** (cluster-scoped)
    - `echo-api` - Application namespace
    - `ingress-gateway` - Gateway and routing namespace
+   - `globex` - Globex demo application namespace
 
 2. **GatewayClass** (`cluster-gatewayclass-istio.yaml`)
    - Cluster-scoped resource defining Istio as the Gateway controller
@@ -95,6 +96,11 @@ This repository contains GitOps manifests for deploying Red Hat Connectivity Lin
    - **KeycloakRealmImport** (`keycloak-keycloakrealmimport-globex-user1.yaml`)
      - Creates `globex-user1` realm in existing Keycloak instance
      - Includes 3 OAuth clients: `client-manager`, `globex-web-gateway`, `globex-mobile`
+     - **OAuth Flow Configuration**:
+       - `globex-web-gateway` client has **both** `standardFlowEnabled: true` and `implicitFlowEnabled: true`
+       - `standardFlowEnabled` is **REQUIRED** for proper server-side session creation
+       - Without it, Keycloak returns 401 "user_session_not_found" on `/userinfo` endpoint
+       - Implicit Flow alone doesn't create persistent sessions in Keycloak
      - Includes 8 users: 1 realm admin (`user1`), 5 demo users, 2 service accounts
      - Realm roles: `admin`, `confidential`, `mobile-user`, `web-user`, `user`
      - Composite role: `default-roles-globex` (includes realm and client roles)
@@ -145,6 +151,51 @@ This repository contains GitOps manifests for deploying Red Hat Connectivity Lin
      - InitContainer: `/spec/template/spec/initContainers/0/env/0/value`
      - Main container: `/spec/template/spec/containers/0/env/10/value`, `/spec/template/spec/containers/0/env/11/value`
 
+13. **Globex Database** (globex namespace)
+   - **Deployment** (`globex-deployment-globex-db.yaml`) - PostgreSQL database for Globex application
+   - **Service** (`globex-service-globex-db.yaml`) - ClusterIP exposing port 5432
+   - **ServiceAccount** (`globex-serviceaccount-globex-db.yaml`)
+   - **Secret** (`globex-secret-globex-db.yaml`) - **⚠️ CONTAINS DEMO SECRETS**: Database credentials for testing only
+   - **Image**: `quay.io/cloud-architecture-workshop/globex-store-db:latest`
+   - **Configuration**:
+     - Database name: `globex`
+     - User: `globex`
+     - **⚠️ WARNING**: Hardcoded demo passwords in Secret (`database-password`, `database-admin-password`, `database-debezium-password`)
+     - **NOT FOR PRODUCTION**: See SECURITY.md for proper secret management
+   - **Strategy**: Recreate (not RollingUpdate) to prevent data corruption
+
+14. **Globex Store App** (globex namespace)
+   - **Deployment** (`globex-deployment-globex-store-app.yaml`) - Quarkus REST API backend
+   - **Service** (`globex-service-globex-store-app.yaml`) - ClusterIP exposing port 8080
+   - **ServiceAccount** (`globex-serviceaccount-globex-store-app.yaml`)
+   - **Image**: `quay.io/cloud-architecture-workshop/globex-store:latest`
+   - **Configuration**:
+     - Connects to `globex-db` PostgreSQL database
+     - Uses Secret `globex-db` for database credentials
+     - JDBC URL: `jdbc:postgresql://globex-db:5432/globex`
+   - **Health Probes**:
+     - Liveness: `/q/health/live`
+     - Readiness: `/q/health/ready`
+
+15. **Globex Mobile Gateway** (globex namespace)
+   - **Deployment** (`globex-deployment-globex-mobile-gateway.yaml`) - Quarkus mobile API gateway with OAuth
+   - **Service** (`globex-service-globex-mobile-gateway.yaml`) - ClusterIP exposing port 8080
+   - **Route** (`globex-route-globex-mobile-gateway.yaml`) - OpenShift Route for external access
+   - **ServiceAccount** (`globex-serviceaccount-globex-mobile-gateway.yaml`)
+   - **Image**: `quay.io/cloud-architecture-workshop/globex-mobile-gateway:latest`
+   - **Configuration**:
+     - Connects to `globex-store-app` backend
+     - Uses Keycloak for OAuth authentication
+     - Environment variable `KEYCLOAK_AUTH_SERVER_URL` with placeholder (patched by Job #5)
+   - **Job Integration** (`openshift-gitops-job-globex-env.yaml`):
+     - Patches `KEYCLOAK_AUTH_SERVER_URL` environment variable
+     - Uses JSON patch: `/spec/template/spec/containers/0/env/1/value`
+   - **ArgoCD ignoreDifferences**: Configured to ignore runtime-patched environment variables
+     - Main container: `/spec/template/spec/containers/0/env/1/value`
+   - **Health Probes**:
+     - Liveness: `/q/health/live`
+     - Readiness: `/q/health/ready`
+
 ### GitOps Flow
 
 ```
@@ -153,7 +204,7 @@ ArgoCD Application
 Kustomize Overlay (default)
     ↓
 Kustomize Base
-    ├── Namespaces (echo-api, ingress-gateway)
+    ├── Namespaces (echo-api, ingress-gateway, globex)
     ├── RBAC (ClusterRole, ClusterRoleBinding)
     ├── GatewayClass (istio)
     ├── Gateway (static YAML with placeholder)
@@ -166,13 +217,15 @@ Kustomize Base
     ├── RateLimitPolicy (HTTPRoute-level for echo-api, overrides Gateway default)
     ├── Deployment + Service (echo-api)
     ├── KeycloakRealmImport (Globex demo realm with users and OAuth clients)
-    └── Jobs (create AWS credentials, patch hostnames, create DNS resources)
+    ├── Globex application stack (db, store-app, mobile-gateway, web)
+    └── Jobs (create AWS credentials, patch hostnames, create DNS resources, patch Globex env vars)
 
 Jobs execute:
     Job #1 (AWS) → Creates aws-credentials (DNSPolicy) + aws-acme (cert-manager) Secrets
     Job #2 (DNS) → Creates HostedZone + RecordSet in ack-system
     Job #3 (Gateway) → Patches Gateway hostname
     Job #4 (HTTPRoute) → Patches HTTPRoute hostname
+    Job #5 (Globex Env) → Patches globex-web and globex-mobile-gateway environment variables
 
 DNSPolicy creates DNS records in Route53 pointing to Gateway Load Balancer
 ArgoCD ignores hostname drifts (ignoreDifferences)
@@ -831,12 +884,28 @@ See [SECURITY.md](SECURITY.md) for complete security documentation.
 │   │   ├── cluster-crb-gateway-manager-openshift-gitops-argocd-application-controller.yaml
 │   │   ├── cluster-gatewayclass-istio.yaml
 │   │   ├── cluster-ns-echo-api.yaml
+│   │   ├── cluster-ns-globex.yaml
 │   │   ├── cluster-ns-ingress-gateway.yaml
 │   │   ├── echo-api-authpolicy-echo-api.yaml
 │   │   ├── echo-api-deployment-echo-api.yaml
 │   │   ├── echo-api-httproute-echo-api.yaml
 │   │   ├── echo-api-ratelimitpolicy-echo-api-rlp.yaml
 │   │   ├── echo-api-service-echo-api.yaml
+│   │   ├── globex-deployment-globex-db.yaml
+│   │   ├── globex-deployment-globex-mobile-gateway.yaml
+│   │   ├── globex-deployment-globex-store-app.yaml
+│   │   ├── globex-deployment-globex-web.yaml
+│   │   ├── globex-route-globex-mobile-gateway.yaml
+│   │   ├── globex-route-globex-web.yaml
+│   │   ├── globex-secret-globex-db.yaml
+│   │   ├── globex-service-globex-db.yaml
+│   │   ├── globex-service-globex-mobile-gateway.yaml
+│   │   ├── globex-service-globex-store-app.yaml
+│   │   ├── globex-service-globex-web.yaml
+│   │   ├── globex-serviceaccount-globex-db.yaml
+│   │   ├── globex-serviceaccount-globex-mobile-gateway.yaml
+│   │   ├── globex-serviceaccount-globex-store-app.yaml
+│   │   ├── globex-serviceaccount-globex-web.yaml
 │   │   ├── ingress-gateway-authpolicy-prod-web-deny-all.yaml
 │   │   ├── ingress-gateway-dnspolicy-prod-web.yaml
 │   │   ├── ingress-gateway-gateway-prod-web.yaml
@@ -846,6 +915,7 @@ See [SECURITY.md](SECURITY.md) for complete security documentation.
 │   │   ├── openshift-gitops-job-aws-credentials.yaml
 │   │   ├── openshift-gitops-job-echo-api-httproute.yaml
 │   │   ├── openshift-gitops-job-gateway-prod-web.yaml
+│   │   ├── openshift-gitops-job-globex-env.yaml
 │   │   ├── openshift-gitops-job-globex-ns-delegation.yaml
 │   │   └── kustomization.yaml
 │   └── overlays/
@@ -907,15 +977,26 @@ Everything else is 100% dynamic → Works across different clusters/environments
 - ClusterRole `gateway-manager`
 - ClusterRoleBinding
 - GatewayClass `istio`
-- Namespaces: `echo-api`, `ingress-gateway`
+- Namespaces: `echo-api`, `ingress-gateway`, `globex`
 - Gateway `prod-web` (with placeholder hostname)
 - AuthPolicy `prod-web-deny-all` (deny-by-default at Gateway level)
 - HTTPRoute `echo-api` (with placeholder hostname)
 - TLSPolicy `prod-web`
 - DNSPolicy `prod-web`
+- RateLimitPolicy `prod-web` (Gateway level)
 - Deployment `echo-api`
 - Service `echo-api`
-- Jobs (4): AWS credentials, DNS setup, Gateway patch, HTTPRoute patch
+- AuthPolicy `echo-api` (allow-all for HTTPRoute)
+- RateLimitPolicy `echo-api-rlp` (HTTPRoute level)
+- Globex application stack:
+  - Deployment `globex-db` (PostgreSQL)
+  - Deployment `globex-store-app` (Quarkus REST API)
+  - Deployment `globex-mobile-gateway` (Quarkus mobile API with OAuth, patched by Job #5)
+  - Deployment `globex-web` (Angular SSR web app with OAuth, patched by Job #5)
+  - Services, Routes, ServiceAccounts for all components
+  - Secret `globex-db` (⚠️ DEMO SECRETS - database credentials)
+- KeycloakRealmImport `globex-user1` (⚠️ DEMO SECRETS - OAuth client secrets)
+- Jobs (5): AWS credentials, DNS setup, Gateway patch, HTTPRoute patch, Globex env vars patch
 
 ### Dynamic Resources (created by Jobs/Controllers)
 
@@ -1215,6 +1296,68 @@ oc get keycloakrealmimport globex-user1 -n keycloak -o jsonpath='{.spec.realm.cl
 # 5. Check Application → Cookies for Keycloak session cookies
 ```
 
+### Keycloak Userinfo Endpoint Returns 401 Unauthorized
+
+**Symptoms**:
+- OAuth login redirects to Keycloak and back successfully
+- Browser receives valid access token and ID token in URL fragment
+- Multiple requests to `/protocol/openid-connect/userinfo` return **HTTP 401 Unauthorized**
+- Keycloak logs show error: `user_session_not_found`
+- User session doesn't persist, "Login" button remains instead of showing username
+
+**Root Cause**:
+
+Keycloak client using **OAuth2 Implicit Flow only** (`implicitFlowEnabled: true`) without **Authorization Code Flow** (`standardFlowEnabled: false` or not set).
+
+The Implicit Flow:
+- Returns tokens directly in URL fragment (`#`)
+- **Does NOT create server-side sessions** in Keycloak
+- Fails when calling `/userinfo` because Keycloak can't find the session
+- Token introspection returns `"active": false`
+
+**Keycloak Error Log**:
+```
+type="USER_INFO_REQUEST_ERROR", error="user_session_not_found", auth_method="validate_access_token"
+```
+
+**Fix**:
+
+Enable **Authorization Code Flow** alongside Implicit Flow in the Keycloak client:
+
+```yaml
+# kustomize/base/keycloak-keycloakrealmimport-globex-user1.yaml
+- clientId: globex-web-gateway
+  standardFlowEnabled: true  # ← ADD THIS
+  implicitFlowEnabled: true
+  # ... rest of config
+```
+
+**Verification Steps**:
+
+```bash
+# 1. Check Keycloak client configuration
+oc get keycloakrealmimport globex-user1 -n keycloak -o jsonpath='{.spec.realm.clients[?(@.clientId=="globex-web-gateway")]}' | jq '{clientId, standardFlowEnabled, implicitFlowEnabled}'
+# Should show: standardFlowEnabled: true, implicitFlowEnabled: true
+
+# 2. Check Keycloak logs for errors
+oc logs -n keycloak -l app=keycloak --tail=20 | grep -i "user_session_not_found\|userinfo"
+
+# 3. After fixing, clear browser cache and storage
+# Run in browser console:
+localStorage.clear();
+sessionStorage.clear();
+location.reload(true);
+
+# 4. Test userinfo endpoint after login
+# Should return HTTP 200 with user profile data
+```
+
+**Important**:
+- Modern OAuth2 best practice: Use **Authorization Code Flow with PKCE** for SPAs
+- Implicit Flow has known security issues and doesn't maintain sessions
+- Both flows enabled ensures compatibility while fixing session issues
+- After changing Keycloak config, ArgoCD will sync and Keycloak Operator applies changes automatically
+
 ## Important Notes
 
 ### Gateway API and Control Plane
@@ -1231,12 +1374,18 @@ oc get keycloakrealmimport globex-user1 -n keycloak -o jsonpath='{.spec.realm.cl
 - **Idempotent operations**: All Jobs use `oc apply` or `oc patch` making them safe to re-run
 - **Parent zone must be writable**: ACK needs permission to modify the public zone
 - **ServiceAccount**: All Jobs use `openshift-gitops-argocd-application-controller` (has cluster-admin + Gateway permissions)
-- **Fast execution**: AWS credentials job ~5s, DNS job ~45s, Gateway/HTTPRoute patch jobs ~5s each
-- **Parallel execution**: Jobs #1 and #2 can run in parallel, Jobs #3-4 are independent
+- **Fast execution**: AWS credentials job ~5s, DNS job ~45s, Gateway/HTTPRoute/Globex env patch jobs ~5s each
+- **Parallel execution**: Jobs #1 and #2 can run in parallel, Jobs #3-5 are independent
 - **Static + Patch pattern**: Gateway and HTTPRoute are static YAML with placeholders, patched by Jobs
 - **Dynamic resources**: HostedZone, RecordSet, and AWS Secret are fully created by Jobs (no static YAML)
 - **File naming**: Follows convention `<namespace>-<kind>-<name>.yaml` (use `cluster-` prefix for cluster-scoped resources)
 - **ArgoCD drift**: ignoreDifferences configured to ignore hostname fields (managed by Jobs)
+- **Job recreation after ArgoCD sync**: When ArgoCD syncs (e.g., after Git changes), it may revert Job-patched deployments back to Git state with placeholders. Solution: Delete the relevant Job to trigger recreation and re-patching
+  ```bash
+  # Example: Re-run globex-env-setup after ArgoCD sync
+  oc delete job globex-env-setup -n openshift-gitops
+  # ArgoCD will recreate and run it automatically due to Force=true
+  ```
 - **CRITICAL - Secret type**: AWS credentials Secret MUST have type `kuadrant.io/aws` (not `Opaque`) for DNSPolicy to work
 - **cert-manager DNS-01**: Requires `aws-acme` Secret (type `Opaque`) for wildcard certificate validation via Route53 TXT records
 - **Two AWS Secrets**: Job #1 creates both `aws-credentials` (DNSPolicy) and `aws-acme` (cert-manager) from same credentials
@@ -1247,20 +1396,29 @@ oc get keycloakrealmimport globex-user1 -n keycloak -o jsonpath='{.spec.realm.cl
 - **Security pattern**: Deny-by-default prevents accidental exposure of services
 - **Echo API access**: Includes allow-all AuthPolicy (`echo-api-authpolicy-echo-api.yaml`) for demonstration
 
-### Globex Web Application
-- **CRITICAL - SSO Environment Variables**: Only 4 SSO env vars are needed: `SSO_CUSTOM_CONFIG`, `SSO_AUTHORITY`, `SSO_REDIRECT_LOGOUT_URI`, `SSO_LOG_LEVEL`
-- **DO NOT add SSO_CLIENT_ID**: Conflicts with `SSO_CUSTOM_CONFIG` and breaks OAuth session management
-- **CRITICAL - InitContainer Pattern**: Required to patch client-side JavaScript with actual cluster domain
-- **Angular SSR Architecture**: Environment variables only affect server-side code, not pre-built JavaScript bundle
-- **Mount Path**: InitContainer must mount at `/opt/app-root/src/dist/globex-web/browser` (NOT parent directory)
-- **Mounting at wrong path**: Will break Node.js server causing CrashLoopBackOff
-- **Runtime Patching**: InitContainer extracts cluster domain from `SSO_AUTHORITY` and runs `sed` to replace placeholder
-- **ArgoCD Drift**: Must configure ignoreDifferences for initContainer env var to avoid sync conflicts
-- **Job Integration**: `globex-env-setup` Job patches both initContainer and main container environment variables
-- **Session Management**: OAuth redirect_uri must match actual cluster domain for session cookies to work
+### Globex Application Stack
+- **Database Secrets**: `globex-db` Secret contains **⚠️ DEMO PASSWORDS** for PostgreSQL (not for production)
+- **globex-web Application**:
+  - **CRITICAL - SSO Environment Variables**: Only 4 SSO env vars are needed: `SSO_CUSTOM_CONFIG`, `SSO_AUTHORITY`, `SSO_REDIRECT_LOGOUT_URI`, `SSO_LOG_LEVEL`
+  - **DO NOT add SSO_CLIENT_ID**: Conflicts with `SSO_CUSTOM_CONFIG` and breaks OAuth session management
+  - **CRITICAL - InitContainer Pattern**: Required to patch client-side JavaScript with actual cluster domain
+  - **Angular SSR Architecture**: Environment variables only affect server-side code, not pre-built JavaScript bundle
+  - **Mount Path**: InitContainer must mount at `/opt/app-root/src/dist/globex-web/browser` (NOT parent directory)
+  - **Mounting at wrong path**: Will break Node.js server causing CrashLoopBackOff
+  - **Runtime Patching**: InitContainer extracts cluster domain from `SSO_AUTHORITY` and runs `sed` to replace placeholder
+  - **Job Integration**: `globex-env-setup` Job patches both initContainer and main container environment variables
+  - **Session Management**: OAuth redirect_uri must match actual cluster domain for session cookies to work
+- **globex-mobile-gateway Application**:
+  - **Job Integration**: `globex-env-setup` Job patches `KEYCLOAK_AUTH_SERVER_URL` environment variable
+  - **JSON Patch Path**: `/spec/template/spec/containers/0/env/1/value`
+- **ArgoCD ignoreDifferences** (configured for both apps):
+  - globex-web: `/spec/template/spec/initContainers/0/env/0/value`, `/spec/template/spec/containers/0/env/10/value`, `/spec/template/spec/containers/0/env/11/value`
+  - globex-mobile-gateway: `/spec/template/spec/containers/0/env/1/value`
 
 ### Security and Demo Secrets
-- **⚠️ DEMO SECRETS IN GIT**: This repository contains hardcoded OAuth client secrets in `keycloak-keycloakrealmimport-globex-user1.yaml`
+- **⚠️ DEMO SECRETS IN GIT**: This repository contains hardcoded secrets in multiple files:
+  - `keycloak-keycloakrealmimport-globex-user1.yaml` - OAuth client secrets
+  - `globex-secret-globex-db.yaml` - Database credentials (passwords for PostgreSQL)
 - **NOT FOR PRODUCTION**: These are publicly known demo secrets from Red Hat Globex workshop materials
 - **Source**: https://github.com/rh-soln-pattern-connectivity-link/globex-helm
 - **LeakTK allowlist**: `.gitleaks.toml` file configures Red Hat's security scanner to ignore these known demo secrets

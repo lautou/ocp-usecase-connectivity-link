@@ -24,6 +24,11 @@ Everything is managed via GitOps using ArgoCD with **100% dynamic configuration*
 7. **Rate Limiting** - Kuadrant RateLimitPolicy at Gateway level (5 req/10s)
 8. **Echo API Application** - Demo service with allow-all AuthPolicy and HTTPRoute-level RateLimitPolicy (10 req/12s)
 9. **Keycloak Realm Import** - Optional Globex demo realm with users and OAuth clients (for testing/demo only)
+10. **Globex Application Stack** - Full demo e-commerce application:
+    - **globex-db** - PostgreSQL database
+    - **globex-store-app** - Quarkus backend REST API
+    - **globex-mobile-gateway** - Quarkus mobile API gateway with OAuth
+    - **globex-web** - Angular SSR web application with OAuth (exposed via OpenShift Route)
 
 ## Prerequisites
 
@@ -101,13 +106,14 @@ oc apply -f argocd/application.yaml
 oc get application usecase-connectivity-link -n openshift-gitops -w
 
 # Check all Jobs
-oc get job -n openshift-gitops | grep -E "aws-credentials|globex-ns-delegation|gateway-prod-web|echo-api-httproute"
+oc get job -n openshift-gitops | grep -E "aws-credentials|globex-ns-delegation|gateway-prod-web|echo-api-httproute|globex-env"
 
 # View Job logs
 oc logs -n openshift-gitops job/aws-credentials-setup
 oc logs -n openshift-gitops job/globex-ns-delegation
 oc logs -n openshift-gitops job/gateway-prod-web-setup
 oc logs -n openshift-gitops job/echo-api-httproute-setup
+oc logs -n openshift-gitops job/globex-env-setup
 ```
 
 ### Verify
@@ -134,6 +140,12 @@ oc get certificate -n ingress-gateway
 # Check echo-api application
 oc get deployment echo-api -n echo-api
 oc get service echo-api -n echo-api
+
+# Check Globex application stack
+oc get deployment -n globex
+oc get service -n globex
+oc get route -n globex
+oc get secret globex-db -n globex
 
 # Test DNS resolution (wait 2-3 min for DNSPolicy to create records)
 HOSTNAME=$(oc get httproute echo-api -n echo-api -o jsonpath='{.spec.hostnames[0]}')
@@ -172,7 +184,7 @@ ArgoCD Application
 Kustomize (overlays/default)
     ↓
 Static Resources (Git)
-    ├─ Namespaces (echo-api, ingress-gateway)
+    ├─ Namespaces (echo-api, ingress-gateway, globex)
     ├─ RBAC (ClusterRole + ClusterRoleBinding)
     ├─ GatewayClass (istio)
     ├─ Gateway (with placeholder hostname)
@@ -181,17 +193,20 @@ Static Resources (Git)
     ├─ DNSPolicy (Kuadrant DNS integration for Internet exposure)
     ├─ HTTPRoute (with placeholder hostname)
     ├─ Deployment + Service (echo-api app)
-    └─ Jobs (4)
+    ├─ Globex application stack (db, store-app, mobile-gateway, web)
+    └─ Jobs (5)
         ├─ Job #1: Create AWS credentials Secret
         ├─ Job #2: Create HostedZone + RecordSet
         ├─ Job #3: Patch Gateway hostname
-        └─ Job #4: Patch HTTPRoute hostname
+        ├─ Job #4: Patch HTTPRoute hostname
+        └─ Job #5: Patch Globex environment variables
 
 Runtime Execution:
     Job #1 → Creates Secret with AWS credentials (type: kuadrant.io/aws)
     Job #2 → Creates HostedZone + RecordSet in AWS Route53
     Job #3 → Patches Gateway: *.globex.placeholder → *.globex.<cluster-domain>
     Job #4 → Patches HTTPRoute: echo.globex.placeholder → echo.globex.<cluster-domain>
+    Job #5 → Patches Globex deployments with Keycloak URLs using apps domain
     TLSPolicy → Triggers cert-manager to create Let's Encrypt certificate
     DNSPolicy → Creates CNAME records in Route53 pointing to Gateway Load Balancer
 ```
@@ -209,8 +224,12 @@ Runtime Execution:
 | **DNSPolicy** | Static | Creates DNS records for Internet exposure |
 | **RateLimitPolicy (Gateway)** | Static | Rate limiting at Gateway level (5 req/10s) |
 | **HTTPRoute** | Static + Patch | Routes traffic to echo-api service |
-| **Deployment** | Static | echo-api application (1 replica) |
-| **Service** | Static | ClusterIP service for echo-api |
+| **Deployment (echo-api)** | Static | echo-api application (1 replica) |
+| **Service (echo-api)** | Static | ClusterIP service for echo-api |
+| **Globex DB** | Static | PostgreSQL database with demo credentials |
+| **Globex Store App** | Static | Quarkus REST API backend |
+| **Globex Mobile Gateway** | Static + Patch | Quarkus mobile API with OAuth |
+| **Globex Web** | Static + Patch | Angular SSR web app with OAuth |
 | **HostedZone** | Dynamic | Route53 zone for globex subdomain |
 | **RecordSet** | Dynamic | NS delegation in parent zone |
 | **AWS Secret** | Dynamic | Credentials for DNSPolicy (type: kuadrant.io/aws) |
@@ -321,9 +340,10 @@ Everything else adapts to the cluster automatically.
 │   ├── base/
 │   │   ├── cluster-*                           # Cluster-scoped resources
 │   │   ├── echo-api-*                          # echo-api namespace resources
+│   │   ├── globex-*                            # globex namespace resources
 │   │   ├── ingress-gateway-*                   # ingress-gateway namespace
 │   │   ├── keycloak-*                          # Keycloak namespace resources
-│   │   ├── openshift-gitops-job-*              # Jobs (4)
+│   │   ├── openshift-gitops-job-*              # Jobs (5)
 │   │   └── kustomization.yaml
 │   └── overlays/
 │       └── default/
@@ -396,6 +416,24 @@ Everything else adapts to the cluster automatically.
 2. Patch HTTPRoute hostname from placeholder to `echo.globex.<cluster-domain>`
 
 **Patches**: HTTPRoute `echo-api` in `echo-api` namespace
+
+### Job #5: Globex Environment Variables Setup (globex-env-setup)
+
+**Duration**: ~5 seconds
+
+**Steps**:
+1. Get OpenShift apps domain
+2. Construct Keycloak SSO URLs
+3. Patch globex-web Deployment environment variables (initContainer + main container)
+4. Patch globex-mobile-gateway Deployment environment variables
+
+**Patches**:
+- Deployment `globex-web` in `globex` namespace (SSO_AUTHORITY, SSO_REDIRECT_LOGOUT_URI)
+- Deployment `globex-mobile-gateway` in `globex` namespace (KEYCLOAK_AUTH_SERVER_URL)
+
+**Important**:
+- Patches both initContainer and main container env vars for globex-web
+- ArgoCD ignoreDifferences configured to prevent drift detection
 
 ## Troubleshooting
 
@@ -501,15 +539,68 @@ oc get dnspolicy prod-web -n ingress-gateway -o jsonpath='{.status.conditions}' 
 curl -v https://$HOSTNAME
 ```
 
+### Globex Web Login Returns 401 Unauthorized on Userinfo
+
+**Symptoms**: Login redirects to Keycloak successfully, but after authentication multiple requests to `/userinfo` return HTTP 401 Unauthorized. Keycloak logs show `user_session_not_found`.
+
+**Cause**: Keycloak client using Implicit Flow only without Authorization Code Flow, preventing server-side session creation.
+
+**Fix**:
+
+```bash
+# 1. Verify Keycloak client has standardFlowEnabled
+oc get keycloakrealmimport globex-user1 -n keycloak -o jsonpath='{.spec.realm.clients[?(@.clientId=="globex-web-gateway")]}' | jq '{standardFlowEnabled, implicitFlowEnabled}'
+# Should show: standardFlowEnabled: true, implicitFlowEnabled: true
+
+# 2. If standardFlowEnabled is false or missing, it needs to be added to Git
+# Edit: kustomize/base/keycloak-keycloakrealmimport-globex-user1.yaml
+# Add: standardFlowEnabled: true
+
+# 3. After Git change, wait for ArgoCD sync and Keycloak operator to apply
+
+# 4. Clear browser cache and test login again
+# Run in browser console:
+localStorage.clear();
+sessionStorage.clear();
+location.reload(true);
+```
+
+### Globex Web Shows Placeholder Domain After Login
+
+**Symptoms**: After clicking Login, browser tries to connect to `keycloak-keycloak.placeholder` instead of actual domain.
+
+**Cause**: The `globex-env-setup` Job hasn't run or ArgoCD reverted the deployment patches.
+
+**Fix**:
+
+```bash
+# 1. Check if initContainer env vars are patched
+oc get deployment globex-web -n globex -o jsonpath='{.spec.template.spec.initContainers[0].env[0]}' | jq '.'
+# Should show actual domain, not "placeholder"
+
+# 2. If still showing placeholder, re-run the Job
+oc delete job globex-env-setup -n openshift-gitops
+# ArgoCD will recreate it automatically
+
+# 3. Wait for Job completion
+oc wait --for=condition=complete --timeout=60s job/globex-env-setup -n openshift-gitops
+
+# 4. Verify deployment rollout
+oc rollout status deployment globex-web -n globex
+
+# 5. Hard refresh browser cache
+# Ctrl+Shift+R or Cmd+Shift+R
+```
+
 ### Force Resync
 
 ```bash
 # Delete Jobs to force re-run
-oc delete job globex-ns-delegation gateway-prod-web-setup echo-api-httproute-setup \
+oc delete job globex-ns-delegation gateway-prod-web-setup echo-api-httproute-setup globex-env-setup \
   -n openshift-gitops
 
 # Trigger ArgoCD sync
-oc annotate application usecase-connectivity-link -n openshift-gitops \
+oc annotate application.argoproj.io usecase-connectivity-link -n openshift-gitops \
   argocd.argoproj.io/refresh=hard --overwrite
 ```
 
