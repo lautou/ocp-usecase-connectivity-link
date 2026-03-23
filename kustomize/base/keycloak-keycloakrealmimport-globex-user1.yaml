@@ -95,6 +95,7 @@ spec:
       - clientId: globex-web-gateway
         enabled: true
         publicClient: true  # Public client - REQUIRED for Angular SPAs (Keycloak JS no longer supports confidential clients)
+        clientAuthenticatorType: "none"  # CRITICAL: Public clients must NOT use client authentication
         redirectUris:
           - "*"
           - "/*"

@@ -21,7 +21,7 @@ spec:
       serviceAccountName: globex-web
       initContainers:
         - name: patch-placeholder
-          image: quay.io/laurenttourreau/globex-web:rhbk26-authcode-flow
+          image: quay.io/laurenttourreau/globex-web:rhbk26-authcode-flow-v2
           command:
             - /bin/sh
             - -c
@@ -48,7 +48,7 @@ spec:
               mountPath: /app
       containers:
         - name: globex-web
-          image: quay.io/laurenttourreau/globex-web:rhbk26-authcode-flow
+          image: quay.io/laurenttourreau/globex-web:rhbk26-authcode-flow-v2
           ports:
             - containerPort: 8080
           volumeMounts:
