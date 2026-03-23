@@ -8,6 +8,74 @@ This repository contains GitOps manifests for deploying Red Hat Connectivity Lin
 
 **Purpose**: Automate the creation of DNS infrastructure (Route53 hosted zone with delegation), Istio Gateway with TLS, and a demo application (echo-api) for the Connectivity Link use case on OpenShift clusters running on AWS.
 
+## ⚠️ CRITICAL: RHBK 26 Compatibility Issue (UNRESOLVED)
+
+**Status**: The globex-web application is **NOT COMPATIBLE** with Red Hat build of Keycloak (RHBK) 26.x
+
+**Root Cause**:
+- The official globex-web application (`quay.io/cloud-architecture-workshop/globex-web:latest`) is hardcoded to use **OAuth 2.0 Implicit Flow**
+- **RHBK 26 completely removed Implicit Flow support** (per OAuth 2.0 Security Best Current Practice)
+- Implicit Flow is removed from OAuth 2.1 specification and considered insecure
+
+**Symptom**:
+- User can authenticate with Keycloak successfully
+- Keycloak redirects back to application with tokens
+- Application fails with `user_session_not_found` error on `/userinfo` endpoint (HTTP 401)
+- Keycloak logs show: `type="USER_INFO_REQUEST_ERROR", error="user_session_not_found", auth_method="validate_access_token"`
+
+**Why This Fails**:
+- Implicit Flow (by design) does not create server-side sessions in Keycloak
+- The `/userinfo` endpoint requires a valid server-side session
+- This is an architectural incompatibility - not a configuration issue
+
+**RHBK 26 Requirements for SPAs** (per official documentation):
+1. **Must use Authorization Code Flow** (not Implicit Flow)
+2. **Must use PKCE** (Proof Key for Code Exchange)
+3. **Public clients** must set `pkceMethod` in keycloak-js `initOptions`
+4. **Client configuration**:
+   - `publicClient: true`
+   - `standardFlowEnabled: true`
+   - `implicitFlowEnabled: false` (must be disabled)
+   - `attributes["pkce.code.challenge.method"] = "S256"`
+
+**Attempted Solutions**:
+1. ✅ Custom image with JavaScript patches to use Authorization Code Flow (`quay.io/laurenttourreau/globex-web:fixed-pkce`)
+   - Patches response_type from "token" to "code"
+   - Attempts to enable PKCE in minified code
+   - **Result**: Patches may not be applied correctly in minified/obfuscated code
+2. ❌ Configuring Keycloak client as confidential with client secret
+   - **Result**: Modern Angular OIDC libraries don't support confidential clients in browser
+3. ❌ Using original image with Implicit Flow configuration
+   - **Result**: Implicit Flow removed in RHBK 26 - returns 401 on /userinfo
+
+**Required Fix**:
+The globex-web application needs to be **rebuilt from source** with proper RHBK 26 support:
+1. Update Angular OIDC library configuration to use Authorization Code Flow
+2. Enable PKCE in keycloak-js initialization: `pkceMethod: 'S256'`
+3. Remove all Implicit Flow references from application code
+4. Test with RHBK 26.x
+
+**Workarounds**:
+- **Option 1**: Downgrade to RHBK 24.x or 25.x (still has Implicit Flow support)
+- **Option 2**: Use a different demo application compatible with RHBK 26
+- **Option 3**: Rebuild globex-web from source with proper OAuth configuration (source code location unknown)
+
+**References**:
+- [RHBK 26 Securing Applications Guide](https://docs.redhat.com/en/documentation/red_hat_build_of_keycloak/26.0/pdf/securing_applications_and_services_guide/Red_Hat_build_of_Keycloak-26.0-Securing_Applications_and_Services_Guide-en-US.pdf)
+- [Keycloak PKCE Configuration](https://skycloak.io/blog/keycloak-how-to-create-a-pkce-authorization-flow-client/)
+- [Keycloak JavaScript adapter discussion](https://github.com/keycloak/keycloak/discussions/34705)
+
+**Current Configuration** (as of 2026-03-23):
+- RHBK Version: 26.4.10.redhat-00001
+- globex-web Image: `quay.io/cloud-architecture-workshop/globex-web:latest` (incompatible with RHBK 26)
+- Keycloak Client: `globex-web-gateway` configured with both flows enabled (but Implicit Flow ignored by RHBK 26)
+
+**Next Steps**:
+1. Investigate if Red Hat has published an updated globex-web image for RHBK 26
+2. Search for globex-web source code repository to rebuild with proper OAuth configuration
+3. Consider filing issue with Red Hat about demo incompatibility with RHBK 26
+4. Evaluate alternative demo applications that work with RHBK 26
+
 ## Architecture
 
 ### Components
@@ -110,6 +178,7 @@ This repository contains GitOps manifests for deploying Red Hat Connectivity Lin
      - ArgoCD annotation: `SkipDryRunOnMissingResource=true`
 
 12. **Globex Web Application** (globex namespace)
+   - **⚠️ INCOMPATIBLE WITH RHBK 26**: See "CRITICAL: RHBK 26 Compatibility Issue" section above
    - **Deployment** (`globex-deployment-globex-web.yaml`) - Angular SSR application with OAuth integration
    - **Service** (`globex-service-globex-web.yaml`) - ClusterIP exposing port 8080
    - **Route** (`globex-route-globex-web.yaml`) - OpenShift Route for external access
@@ -117,7 +186,8 @@ This repository contains GitOps manifests for deploying Red Hat Connectivity Lin
    - **Image**: `quay.io/cloud-architecture-workshop/globex-web:latest`
    - **Architecture**: Angular 15 with Server-Side Rendering (SSR), Node.js Express server
    - **OAuth Configuration**:
-     - Uses OpenID Connect implicit flow with Keycloak
+     - ⚠️ **BROKEN**: Uses OAuth 2.0 Implicit Flow (hardcoded in JavaScript)
+     - ⚠️ **Implicit Flow removed in RHBK 26** - application cannot authenticate
      - Client ID: `globex-web-gateway` (configured via `SSO_CUSTOM_CONFIG` env var)
      - **CRITICAL**: Only 4 SSO environment variables are needed:
        - `SSO_CUSTOM_CONFIG`: "globex-web-gateway" (maps to Keycloak client_id)
