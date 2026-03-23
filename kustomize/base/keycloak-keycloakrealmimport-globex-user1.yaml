@@ -94,8 +94,9 @@ spec:
 
       - clientId: globex-web-gateway
         enabled: true
+        publicClient: true  # Public client uses PKCE instead of client secret (safe for browser apps)
         clientAuthenticatorType: client-secret
-        secret: "X0zRVwSWDVoUpKFhZwtQmZhDtoJ3MkcI"  # DEMO SECRET - for testing only
+        secret: "X0zRVwSWDVoUpKFhZwtQmZhDtoJ3MkcI"  # DEMO SECRET - ignored for public clients
         redirectUris:
           - "*"
           - "/*"
@@ -105,9 +106,9 @@ spec:
           - "*"
           - "+"
         standardFlowEnabled: true  # Enable Authorization Code Flow for proper session management
-        implicitFlowEnabled: true
-        directAccessGrantsEnabled: true
-        serviceAccountsEnabled: true
+        implicitFlowEnabled: false  # Disable Implicit Flow (deprecated and insecure)
+        directAccessGrantsEnabled: false  # Disable Resource Owner Password Credentials (not needed)
+        serviceAccountsEnabled: false  # Public clients cannot have service accounts
         fullScopeAllowed: true
         protocolMappers:
           - name: Client ID
