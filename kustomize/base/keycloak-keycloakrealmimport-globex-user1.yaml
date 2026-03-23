@@ -94,7 +94,9 @@ spec:
 
       - clientId: globex-web-gateway
         enabled: true
-        publicClient: true  # Public client uses PKCE instead of client secret (safe for browser apps)
+        publicClient: false  # Confidential client (official Red Hat configuration)
+        clientAuthenticatorType: client-secret
+        secret: "X0zRVwSWDVoUpKFhZwtQmZhDtoJ3MkcI"  # DEMO SECRET - matches official Helm chart pattern
         redirectUris:
           - "*"
           - "/*"
@@ -103,10 +105,10 @@ spec:
         webOrigins:
           - "*"
           - "+"
-        standardFlowEnabled: true  # Enable Authorization Code Flow for proper session management
-        implicitFlowEnabled: false  # Disable Implicit Flow (deprecated and insecure)
-        directAccessGrantsEnabled: false  # Disable Resource Owner Password Credentials (not needed)
-        serviceAccountsEnabled: false  # Public clients cannot have service accounts
+        standardFlowEnabled: true  # Enable Authorization Code Flow (official Red Hat config)
+        implicitFlowEnabled: true  # Enable Implicit Flow (required by official Red Hat config)
+        directAccessGrantsEnabled: true  # Enable Resource Owner Password Credentials (official Red Hat config)
+        serviceAccountsEnabled: true  # Enable service accounts (official Red Hat config)
         fullScopeAllowed: true
         protocolMappers:
           - name: Client ID
