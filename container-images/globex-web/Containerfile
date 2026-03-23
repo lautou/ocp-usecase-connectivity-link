@@ -1,0 +1,60 @@
+# Custom Globex Web image with OAuth Authorization Code Flow
+#
+# This Containerfile patches the official globex-web image to use
+# Authorization Code Flow instead of Implicit Flow for proper
+# Keycloak session management.
+#
+# Problem: The official image has OAuth Implicit Flow hardcoded in
+# the minified JavaScript bundle, which doesn't create server-side
+# sessions in Keycloak, causing "user_session_not_found" errors.
+#
+# Solution: Patch the JavaScript bundle to use Authorization Code Flow
+# (response_type=code) which creates proper Keycloak sessions.
+#
+# Build: podman build -t quay.io/YOUR_USERNAME/globex-web:fixed .
+# Push:  podman push quay.io/YOUR_USERNAME/globex-web:fixed
+
+FROM quay.io/cloud-architecture-workshop/globex-web:latest
+
+USER root
+
+# Install required tools for patching
+RUN microdnf install -y findutils sed && \
+    microdnf clean all
+
+# Patch JavaScript files to use Authorization Code Flow
+#
+# The Angular OIDC client library uses these patterns:
+# - response_type: "token" or "id_token token" (Implicit Flow)
+# - response_type: "code" (Authorization Code Flow)
+#
+# We need to replace Implicit Flow with Authorization Code Flow
+RUN echo "Patching OAuth flow in JavaScript bundle..." && \
+    cd /opt/app-root/src/dist/globex-web/browser && \
+    \
+    # Backup original files
+    find . -name "*.js" -exec cp {} {}.backup \; && \
+    \
+    # Pattern 1: Replace response_type:"token" with response_type:"code"
+    find . -name "*.js" -exec sed -i 's/response_type[:"'\'']*token[^"'\'']*"/response_type:"code"/g' {} \; && \
+    \
+    # Pattern 2: Replace response_type:"id_token token" with response_type:"code"
+    find . -name "*.js" -exec sed -i 's/response_type[:"'\'']*id_token[^"'\'']*token[^"'\'']*"/response_type:"code"/g' {} \; && \
+    \
+    # Pattern 3: Replace responseType:"token" with responseType:"code"
+    find . -name "*.js" -exec sed -i 's/responseType[:"'\'']*token[^"'\'']*"/responseType:"code"/g' {} \; && \
+    \
+    # Pattern 4: Replace responseType:"id_token token" with responseType:"code"
+    find . -name "*.js" -exec sed -i 's/responseType[:"'\'']*id_token[^"'\'']*token[^"'\'']*"/responseType:"code"/g' {} \; && \
+    \
+    # Verify the patch (should find "code" occurrences)
+    echo "Verifying patch - searching for response_type:" && \
+    grep -r "response_type" . | head -5 || true && \
+    \
+    echo "Patch complete!"
+
+# Switch back to non-root user
+USER 1001
+
+# Keep the original entrypoint and CMD
+# The patched JavaScript will now use Authorization Code Flow

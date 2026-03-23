@@ -21,7 +21,7 @@ spec:
       serviceAccountName: globex-web
       initContainers:
         - name: patch-placeholder
-          image: quay.io/cloud-architecture-workshop/globex-web:latest
+          image: quay.io/laurenttourreau/globex-web:fixed
           command:
             - /bin/sh
             - -c
@@ -48,7 +48,7 @@ spec:
               mountPath: /app
       containers:
         - name: globex-web
-          image: quay.io/cloud-architecture-workshop/globex-web:latest
+          image: quay.io/laurenttourreau/globex-web:fixed
           ports:
             - containerPort: 8080
           volumeMounts:
