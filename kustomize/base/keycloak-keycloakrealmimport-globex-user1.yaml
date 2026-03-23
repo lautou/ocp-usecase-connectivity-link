@@ -94,9 +94,7 @@ spec:
 
       - clientId: globex-web-gateway
         enabled: true
-        publicClient: false  # Confidential client (official Red Hat configuration)
-        clientAuthenticatorType: client-secret
-        secret: "X0zRVwSWDVoUpKFhZwtQmZhDtoJ3MkcI"  # DEMO SECRET - matches official Helm chart pattern
+        publicClient: true  # Public client - REQUIRED for Angular SPAs (Keycloak JS no longer supports confidential clients)
         redirectUris:
           - "*"
           - "/*"
@@ -105,10 +103,10 @@ spec:
         webOrigins:
           - "*"
           - "+"
-        standardFlowEnabled: true  # Enable Authorization Code Flow (official Red Hat config)
-        implicitFlowEnabled: true  # Enable Implicit Flow (required by official Red Hat config)
-        directAccessGrantsEnabled: true  # Enable Resource Owner Password Credentials (official Red Hat config)
-        serviceAccountsEnabled: true  # Enable service accounts (official Red Hat config)
+        standardFlowEnabled: true  # Authorization Code Flow with PKCE (automatically enabled for public clients)
+        implicitFlowEnabled: false  # Implicit Flow disabled (deprecated and insecure)
+        directAccessGrantsEnabled: false  # Resource Owner Password Credentials disabled (not needed for SPAs)
+        serviceAccountsEnabled: false  # Public clients cannot have service accounts
         fullScopeAllowed: true
         protocolMappers:
           - name: Client ID
