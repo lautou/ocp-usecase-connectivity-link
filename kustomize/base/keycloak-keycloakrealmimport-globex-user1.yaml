@@ -104,6 +104,7 @@ spec:
         webOrigins:
           - "*"
           - "+"
+        standardFlowEnabled: true  # Enable Authorization Code Flow for proper session management
         implicitFlowEnabled: true
         directAccessGrantsEnabled: true
         serviceAccountsEnabled: true
