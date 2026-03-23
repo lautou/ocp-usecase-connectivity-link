@@ -22,13 +22,17 @@ USER root
 RUN microdnf install -y findutils sed && \
     microdnf clean all
 
-# Patch JavaScript files to use Authorization Code Flow
+# Patch JavaScript files to use Authorization Code Flow with PKCE
 #
 # The Angular OIDC client library uses these patterns:
 # - response_type: "token" or "id_token token" (Implicit Flow)
 # - response_type: "code" (Authorization Code Flow)
+# - usePkce: false (default for implicit flow)
+# - usePkce: true (required for public clients with code flow)
 #
-# We need to replace Implicit Flow with Authorization Code Flow
+# We need to:
+# 1. Replace Implicit Flow with Authorization Code Flow
+# 2. Enable PKCE (required for public clients)
 RUN echo "Patching OAuth flow in JavaScript bundle..." && \
     cd /opt/app-root/src/dist/globex-web/browser && \
     \
@@ -47,9 +51,15 @@ RUN echo "Patching OAuth flow in JavaScript bundle..." && \
     # Pattern 4: Replace responseType:"id_token token" with responseType:"code"
     find . -name "*.js" -exec sed -i 's/responseType[:"'\'']*id_token[^"'\'']*token[^"'\'']*"/responseType:"code"/g' {} \; && \
     \
-    # Verify the patch (should find "code" occurrences)
-    echo "Verifying patch - searching for response_type:" && \
-    grep -r "response_type" . | head -5 || true && \
+    # Pattern 5: Enable PKCE (usePkce:false → usePkce:true)
+    find . -name "*.js" -exec sed -i 's/usePkce[:"'\'']*false/usePkce:true/g' {} \; && \
+    \
+    # Pattern 6: Enable PKCE (usePkce:!1 → usePkce:!0 in minified code)
+    find . -name "*.js" -exec sed -i 's/usePkce:!1/usePkce:!0/g' {} \; && \
+    \
+    # Verify the patch (should find "code" and "true" occurrences)
+    echo "Verifying patch - searching for response_type and usePkce:" && \
+    grep -r "response_type\|usePkce" . | head -10 || true && \
     \
     echo "Patch complete!"
 
