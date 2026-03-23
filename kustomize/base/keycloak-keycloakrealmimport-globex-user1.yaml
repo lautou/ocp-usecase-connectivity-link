@@ -108,6 +108,8 @@ spec:
         directAccessGrantsEnabled: false  # Resource Owner Password Credentials disabled (not needed for SPAs)
         serviceAccountsEnabled: false  # Public clients cannot have service accounts
         fullScopeAllowed: true
+        attributes:
+          pkce.code.challenge.method: "S256"  # Enforce PKCE with SHA-256
         protocolMappers:
           - name: Client ID
             protocol: openid-connect
