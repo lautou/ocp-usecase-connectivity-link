@@ -21,7 +21,7 @@ spec:
       serviceAccountName: globex-web
       initContainers:
         - name: patch-placeholder
-          image: quay.io/cloud-architecture-workshop/globex-web:latest
+          image: quay.io/laurenttourreau/globex-web:fixed-pkce
           command:
             - /bin/sh
             - -c
@@ -48,7 +48,7 @@ spec:
               mountPath: /app
       containers:
         - name: globex-web
-          image: quay.io/cloud-architecture-workshop/globex-web:latest
+          image: quay.io/laurenttourreau/globex-web:fixed-pkce
           ports:
             - containerPort: 8080
           volumeMounts:
@@ -81,6 +81,8 @@ spec:
               value: "https://globex-web-globex.placeholder/home"
             - name: SSO_LOG_LEVEL
               value: "2"
+            - name: SSO_CLIENT_SECRET
+              value: "X0zRVwSWDVoUpKFhZwtQmZhDtoJ3MkcI"
           livenessProbe:
             httpGet:
               path: /health
