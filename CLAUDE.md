@@ -26,10 +26,12 @@ This repository contains GitOps manifests for deploying Red Hat Connectivity Lin
    - Required for Jobs to manage Gateway resources
 
 4. **Gateway** (`ingress-gateway-gateway-prod-web.yaml`)
-   - Static YAML with placeholder hostname: `*.globex.placeholder`
+   - Static YAML with placeholder hostname: `echo.globex.placeholder` (specific, NOT wildcard)
    - Istio Gateway with HTTPS listener on port 443
    - References TLS certificate Secret `api-tls` (managed by TLSPolicy)
-   - **Patched by Job** to use actual cluster domain
+   - **Patched by Job** to use actual cluster domain: `echo.globex.<cluster-domain>`
+   - **CRITICAL**: Uses specific hostname to avoid wildcard CNAME + DNS-01 race condition
+   - **Rationale**: See "Gateway Hostname Pattern Decision" section for details
 
 5. **TLSPolicy** (`ingress-gateway-tlspolicy-prod-web.yaml`)
    - Kuadrant TLSPolicy for automatic certificate management
@@ -81,8 +83,9 @@ This repository contains GitOps manifests for deploying Red Hat Connectivity Lin
      - 6 steps, ~45 seconds execution
 
    - **Job #3: Gateway Patch** (`openshift-gitops-job-gateway-prod-web.yaml`)
-     - Patches Gateway hostname from placeholder to `*.globex.<cluster-domain>`
+     - Patches Gateway hostname from placeholder to `echo.globex.<cluster-domain>` (specific, NOT wildcard)
      - 2 steps, ~5 seconds execution
+     - **Note**: Uses specific hostname to avoid wildcard CNAME blocking cert-manager DNS-01 validation
 
    - **Job #4: HTTPRoute Patch** (`openshift-gitops-job-echo-api-httproute.yaml`)
      - Patches HTTPRoute hostname from placeholder to `echo.globex.<cluster-domain>`
@@ -342,6 +345,154 @@ ignoreDifferences:
 ```
 
 This tells ArgoCD: "These fields are managed by Jobs, not Git. Don't overwrite them."
+
+### Gateway Hostname Pattern Decision: Specific vs Wildcard
+
+**Critical Decision**: This project uses **specific hostnames** (not wildcards) for the Gateway listener.
+
+**Current Implementation**:
+```yaml
+# Gateway
+hostname: "echo.globex.myocp.sandbox3491.opentlc.com"  # Specific
+
+# NOT using:
+# hostname: "*.globex.myocp.sandbox3491.opentlc.com"  # Wildcard ❌
+```
+
+#### The Wildcard CNAME + DNS-01 Race Condition Problem
+
+**Background**: cert-manager issue [#5751](https://github.com/cert-manager/cert-manager/issues/5751) (open since 2019) documents a critical conflict between wildcard CNAME records and ACME DNS-01 validation.
+
+**The Problem**:
+
+When using wildcard Gateway hostnames with Kuadrant DNSPolicy and cert-manager TLSPolicy:
+
+1. **DNSPolicy creates wildcard CNAME**:
+   ```dns
+   *.globex.myocp.sandbox3491.opentlc.com → load-balancer.elb.amazonaws.com
+   ```
+
+2. **cert-manager tries DNS-01 validation**:
+   ```dns
+   Query: _acme-challenge.globex.myocp.sandbox3491.opentlc.com TXT
+   Expected: TXT record with ACME challenge token
+   Actual: CNAME record (caught by wildcard!)
+   ```
+
+3. **Wildcard CNAME blocks TXT record**:
+   - DNS returns the CNAME instead of allowing TXT record lookup
+   - cert-manager cannot validate domain ownership
+   - Certificate issuance **stuck forever** in "pending" state
+
+**Race Condition in Simultaneous Deployment**:
+
+When deploying all resources via ArgoCD simultaneously:
+
+```
+Time T0: ArgoCD syncs Gateway + TLSPolicy + DNSPolicy
+Time T1: Job patches Gateway to wildcard hostname
+Time T2: Controllers react in parallel
+  ├─ DNSPolicy: Creates wildcard CNAME (fast, simple operation)
+  └─ TLSPolicy: Triggers cert-manager DNS-01 challenge (slow, multi-step)
+
+Race outcome:
+  If DNSPolicy wins (common):
+    └─ Wildcard CNAME exists BEFORE ACME challenge
+    └─ Certificate STUCK ❌
+
+  If TLSPolicy wins (rare):
+    └─ Certificate issued BEFORE wildcard CNAME created
+    └─ Certificate works ✅
+    └─ BUT: Renewal fails after 60-90 days ❌
+```
+
+**Why This is Non-Deterministic**:
+- Controller reconciliation timing
+- Kubernetes scheduling
+- Network latency to Route53
+- DNS propagation speed
+- CPU resource availability
+
+**Real-World Impact**:
+
+This race condition explains:
+1. **Why initial deployments sometimes work**: TLSPolicy won the race
+2. **Why certificate renewal fails**: Wildcard CNAME now exists, blocks renewal
+3. **Why official Red Hat demos don't mention it**: Lucky timing or demos end before 60-day renewal
+4. **Why our previous cluster worked**: Incremental deployment avoided the race
+5. **Why this cluster failed**: Simultaneous deployment, DNSPolicy won the race
+
+**Historical Evidence**:
+
+Our previous cluster experience validates this theory:
+- **Old cluster**: Deployed step-by-step → Certificate issued successfully ✅
+- **New cluster**: Deployed simultaneously via ArgoCD → Certificate stuck ❌
+
+**cert-manager Fix Status**:
+
+- **Issue**: [#5751](https://github.com/cert-manager/cert-manager/issues/5751) - Open since 2019
+- **Recent PR**: [#8639](https://github.com/cert-manager/cert-manager/pull/8639) - Filed March 20, 2026 (3 days before our deployment!)
+- **Fix**: Introduces `isWildcardCNAME()` to distinguish wildcard-derived from explicit CNAMEs
+- **Status**: **Not yet merged** - Still under review
+- **Our version**: cert-manager v1.18.4 - Does NOT include the fix
+
+**Why We Can't Use Wildcards Now**:
+
+1. ❌ cert-manager fix not available yet
+2. ❌ No reliable workaround exists
+3. ❌ Race condition makes behavior non-deterministic
+4. ❌ Certificate renewal will fail even if initial issuance succeeds
+5. ❌ Production systems need deterministic certificate behavior
+
+**Solution: Specific Hostnames**
+
+Using specific hostnames eliminates the race condition:
+
+```yaml
+# Gateway
+hostname: "echo.globex.myocp.sandbox3491.opentlc.com"
+
+# DNSPolicy creates specific CNAME (not wildcard)
+echo.globex.myocp.sandbox3491.opentlc.com → load-balancer.elb.amazonaws.com
+
+# cert-manager DNS-01 validation works
+Query: _acme-challenge.echo.globex.myocp.sandbox3491.opentlc.com TXT
+Result: TXT record (not blocked by specific CNAME) ✅
+```
+
+**Benefits**:
+- ✅ Deterministic certificate issuance
+- ✅ Successful certificate renewals
+- ✅ No race conditions
+- ✅ Works with current cert-manager version
+- ✅ Can switch to wildcard when cert-manager fix is released
+
+**Comparison with Official Red Hat Pattern**:
+
+Official Red Hat Connectivity Link documentation ([solutionpatterns.io](https://www.solutionpatterns.io/soln-pattern-connectivity-link/)) shows:
+- ✅ Uses wildcard Gateway hostnames: `*.globex.mycluster.example.com`
+- ✅ Uses DNSPolicy + TLSPolicy
+- ❌ Does **not** document the DNS-01 conflict
+- ❌ Does **not** mention certificate issuance delays
+- ⚠️ Likely encounters the same race condition but doesn't document it
+
+**Why Official Docs Don't Mention It**:
+1. Demo/workshop environments may win the race sometimes
+2. Demos might not run long enough to hit certificate renewal (60-90 days)
+3. Manual intervention might happen behind the scenes
+4. Issue is non-deterministic and hard to reproduce consistently
+
+**Future Migration Path**:
+
+When cert-manager PR #8639 is merged and released:
+1. Upgrade cert-manager to version with fix
+2. Change Gateway hostname back to wildcard pattern
+3. Enjoy benefits of wildcard routing without DNS-01 conflicts
+
+**Related Issues**:
+- cert-manager #5751: "Wildcard DNS domains and `cnameStrategy: Follow` don't work nicely together"
+- cert-manager #8639: "fix(dns01): don't follow wildcard CNAMEs for challenge domain"
+- Kuadrant: No documented awareness of this conflict
 
 ### Kuadrant DNSPolicy and AWS Provider
 

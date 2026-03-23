@@ -12,7 +12,7 @@ spec:
     - allowedRoutes:
         namespaces:
           from: All
-      hostname: "*.globex.placeholder"
+      hostname: "echo.globex.placeholder"
       name: api
       port: 443
       protocol: HTTPS
