@@ -7,6 +7,8 @@ metadata:
     app.kubernetes.io/name: globex-env-setup
     app.kubernetes.io/part-of: connectivity-link
   annotations:
+    argocd.argoproj.io/hook: PostSync
+    argocd.argoproj.io/hook-delete-policy: BeforeHookCreation
     argocd.argoproj.io/sync-options: Force=true
 spec:
   template:
