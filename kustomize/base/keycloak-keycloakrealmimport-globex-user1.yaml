@@ -95,8 +95,6 @@ spec:
       - clientId: globex-web-gateway
         enabled: true
         publicClient: true  # Public client uses PKCE instead of client secret (safe for browser apps)
-        clientAuthenticatorType: client-secret
-        secret: "X0zRVwSWDVoUpKFhZwtQmZhDtoJ3MkcI"  # DEMO SECRET - ignored for public clients
         redirectUris:
           - "*"
           - "/*"
