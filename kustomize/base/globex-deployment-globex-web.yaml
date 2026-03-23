@@ -21,7 +21,7 @@ spec:
       serviceAccountName: globex-web
       initContainers:
         - name: patch-placeholder
-          image: quay.io/laurenttourreau/globex-web:fixed
+          image: quay.io/laurenttourreau/globex-web:fixed-pkce
           command:
             - /bin/sh
             - -c
@@ -48,7 +48,7 @@ spec:
               mountPath: /app
       containers:
         - name: globex-web
-          image: quay.io/laurenttourreau/globex-web:fixed
+          image: quay.io/laurenttourreau/globex-web:fixed-pkce
           ports:
             - containerPort: 8080
           volumeMounts:
