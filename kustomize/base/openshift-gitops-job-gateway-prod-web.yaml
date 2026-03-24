@@ -26,11 +26,11 @@ spec:
               echo ""
               echo "[1/2] Getting cluster domain..."
               BASE_DOMAIN=$(oc get dns cluster -o jsonpath='{.spec.baseDomain}')
-              GATEWAY_HOSTNAME="echo.globex.${BASE_DOMAIN}"
+              GATEWAY_HOSTNAME="*.globex.${BASE_DOMAIN}"
 
               echo "✓ Cluster base domain: ${BASE_DOMAIN}"
               echo "✓ Target hostname: ${GATEWAY_HOSTNAME}"
-              echo "✓ Pattern: Specific hostname (not wildcard)"
+              echo "✓ Pattern: Wildcard hostname"
 
               # Patch Gateway hostname
               echo ""
