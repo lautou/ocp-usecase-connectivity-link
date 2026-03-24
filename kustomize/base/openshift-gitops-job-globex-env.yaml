@@ -42,8 +42,10 @@ spec:
               echo "[2/5] Constructing SSO URLs..."
               KEYCLOAK_URL="https://keycloak-keycloak.${APPS_DOMAIN}/realms/globex-user1"
               LOGOUT_URI="https://globex-mobile-globex-apim-user1.${APPS_DOMAIN}/home"
+              MOBILE_GW_KEYCLOAK_URL="https://keycloak-keycloak.${APPS_DOMAIN}/realms/globex-user1"
               echo "✓ Keycloak SSO Authority: ${KEYCLOAK_URL}"
               echo "✓ Logout redirect URI: ${LOGOUT_URI}"
+              echo "✓ Mobile Gateway Keycloak URL: ${MOBILE_GW_KEYCLOAK_URL}"
               echo ""
 
               # Check if configuration is already up-to-date (skip unnecessary work)

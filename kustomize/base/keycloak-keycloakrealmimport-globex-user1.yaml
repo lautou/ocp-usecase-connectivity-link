@@ -146,17 +146,19 @@ spec:
 
       - clientId: globex-mobile
         enabled: true
-        clientAuthenticatorType: client-secret
-        secret: "Aob7zLHHStk2RCSn2DVwjmhSwoxOwHW7"  # DEMO SECRET - for testing only
+        publicClient: true
+        clientAuthenticatorType: "none"
         redirectUris:
           - "*"
         webOrigins:
           - "*"
           - "+"
-        implicitFlowEnabled: true
+        standardFlowEnabled: true
+        implicitFlowEnabled: false
         directAccessGrantsEnabled: true
-        serviceAccountsEnabled: true
         fullScopeAllowed: true
+        attributes:
+          pkce.code.challenge.method: "S256"
         protocolMappers:
           - name: Client ID
             protocol: openid-connect

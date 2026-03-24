@@ -69,12 +69,12 @@ spec:
               value: "http://globex-store-app:8080/services/customer/id/"
             - name: API_ORDER_SERVICE
               value: "http://globex-store-app:8080/services/order"
-            - name: SSO_CUSTOM_CONFIG
-              value: "globex-web-gateway"
+            - name: API_CLIENT_ID
+              value: "globex-mobile"
             - name: SSO_AUTHORITY
               value: "https://keycloak-keycloak.placeholder/realms/globex-user1"
             - name: SSO_REDIRECT_LOGOUT_URI
-              value: "https://globex-web-globex.placeholder/home"
+              value: "https://globex-mobile-globex-apim-user1.placeholder/home"
             - name: SSO_LOG_LEVEL
               value: "2"
           livenessProbe:
