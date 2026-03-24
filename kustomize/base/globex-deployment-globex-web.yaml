@@ -59,19 +59,15 @@ spec:
               value: "prod"
             - name: PORT
               value: "8080"
-            - name: API_TRACK_USEREVENTS
-              value: "http://activity-tracking:8080/track"
             - name: API_GET_PAGINATED_PRODUCTS
-              value: "http://globex-store-app:8080/services/products"
+              value: "http://globex-store-app:8080/services/catalog/product"
             - name: API_GET_PRODUCT_DETAILS_BY_IDS
-              value: "http://globex-store-app:8080/services/products/list/"
-            - name: API_CATALOG_RECOMMENDED_PRODUCT_IDS
-              value: "http://recommendation-engine:8080/score/product"
-            - name: API_TRACK_CART
+              value: "http://globex-store-app:8080/services/catalog/product/list/"
+            - name: API_CART_SERVICE
               value: "http://globex-store-app:8080/services/cart"
-            - name: API_GET_CUSTOMER_BY_USERNAME
-              value: "http://globex-store-app:8080/services/customer/"
-            - name: API_TRACK_PLACE_ORDER
+            - name: API_CUSTOMER_SERVICE
+              value: "http://globex-store-app:8080/services/customer/id/"
+            - name: API_ORDER_SERVICE
               value: "http://globex-store-app:8080/services/order"
             - name: SSO_CUSTOM_CONFIG
               value: "globex-web-gateway"
