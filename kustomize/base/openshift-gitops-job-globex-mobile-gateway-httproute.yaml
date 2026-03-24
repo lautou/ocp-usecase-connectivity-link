@@ -1,0 +1,57 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: globex-mobile-gateway-httproute-setup
+  namespace: openshift-gitops
+  labels:
+    app.kubernetes.io/name: globex-mobile-gateway-httproute-setup
+    app.kubernetes.io/part-of: connectivity-link
+  annotations:
+    argocd.argoproj.io/hook: PostSync
+    argocd.argoproj.io/hook-delete-policy: BeforeHookCreation
+    argocd.argoproj.io/sync-wave: "3"
+    argocd.argoproj.io/sync-options: Force=true
+spec:
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: globex-mobile-gateway-httproute-setup
+    spec:
+      serviceAccountName: openshift-gitops-argocd-application-controller
+      restartPolicy: Never
+      containers:
+        - name: patch-httproute
+          image: registry.redhat.io/openshift4/ose-cli:latest
+          command:
+            - /bin/bash
+            - -c
+            - |
+              set -e
+
+              echo "=========================================="
+              echo "Globex Mobile Gateway HTTPRoute Setup"
+              echo "=========================================="
+              echo ""
+
+              # Get cluster domain
+              echo "[1/2] Getting OpenShift cluster domain..."
+              BASE_DOMAIN=$(oc get dns cluster -o jsonpath='{.spec.baseDomain}')
+              echo "✓ Cluster base domain: ${BASE_DOMAIN}"
+              echo ""
+
+              # Patch HTTPRoute hostname
+              echo "[2/2] Patching HTTPRoute hostname..."
+              HOSTNAME="globex-mobile.globex.${BASE_DOMAIN}"
+              oc patch httproute globex-mobile-gateway -n globex-apim-user1 --type=json -p="[
+                {\"op\": \"replace\", \"path\": \"/spec/hostnames/0\", \"value\": \"${HOSTNAME}\"}
+              ]"
+              echo "✓ HTTPRoute hostname set to: ${HOSTNAME}"
+              echo ""
+
+              echo "=========================================="
+              echo "✅ Globex Mobile Gateway HTTPRoute configured!"
+              echo "=========================================="
+              echo ""
+              echo "📋 Access Mobile Gateway at:"
+              echo "  https://${HOSTNAME}/mobile/services/category/list"
+              echo "  https://${HOSTNAME}/mobile/services/product/category/<category>"

@@ -39,7 +39,7 @@ spec:
                   BASE_DOMAIN=$(oc get dns cluster -o jsonpath='{.spec.baseDomain}')
 
                   # Check Gateway hostname
-                  echo "[1/3] Checking Gateway prod-web hostname..."
+                  echo "[1/4] Checking Gateway prod-web hostname..."
                   GATEWAY_HOSTNAME=$(oc get gateway prod-web -n ingress-gateway -o jsonpath='{.spec.listeners[0].hostname}' 2>/dev/null || echo "")
                   if [[ "$GATEWAY_HOSTNAME" == *"placeholder"* ]]; then
                     echo "  ⚠️  Gateway has placeholder: $GATEWAY_HOSTNAME"
@@ -55,7 +55,7 @@ spec:
                   echo ""
 
                   # Check echo-api HTTPRoute
-                  echo "[2/3] Checking echo-api HTTPRoute hostname..."
+                  echo "[2/4] Checking echo-api HTTPRoute hostname..."
                   ECHO_HOSTNAME=$(oc get httproute echo-api -n echo-api -o jsonpath='{.spec.hostnames[0]}' 2>/dev/null || echo "")
                   if [[ "$ECHO_HOSTNAME" == *"placeholder"* ]]; then
                     echo "  ⚠️  HTTPRoute has placeholder: $ECHO_HOSTNAME"
@@ -70,8 +70,24 @@ spec:
                   fi
                   echo ""
 
+                  # Check globex-mobile-gateway HTTPRoute
+                  echo "[3/4] Checking globex-mobile-gateway HTTPRoute hostname..."
+                  MOBILE_GW_HOSTNAME=$(oc get httproute globex-mobile-gateway -n globex-apim-user1 -o jsonpath='{.spec.hostnames[0]}' 2>/dev/null || echo "")
+                  if [[ "$MOBILE_GW_HOSTNAME" == *"placeholder"* ]]; then
+                    echo "  ⚠️  HTTPRoute has placeholder: $MOBILE_GW_HOSTNAME"
+                    echo "  → Patching to: globex-mobile.globex.${BASE_DOMAIN}"
+                    oc patch httproute globex-mobile-gateway -n globex-apim-user1 --type=json -p="[
+                      {\"op\": \"replace\", \"path\": \"/spec/hostnames/0\", \"value\": \"globex-mobile.globex.${BASE_DOMAIN}\"}
+                    ]"
+                    echo "  ✅ HTTPRoute patched"
+                    NEEDS_PATCH=1
+                  else
+                    echo "  ✓ HTTPRoute OK: $MOBILE_GW_HOSTNAME"
+                  fi
+                  echo ""
+
                   # Check globex-mobile deployment
-                  echo "[3/3] Checking globex-mobile deployment env vars..."
+                  echo "[4/4] Checking globex-mobile deployment env vars..."
                   SSO_AUTHORITY=$(oc get deployment globex-mobile -n globex-apim-user1 -o jsonpath='{.spec.template.spec.containers[0].env[?(@.name=="SSO_AUTHORITY")].value}' 2>/dev/null || echo "")
                   MOBILE_GATEWAY=$(oc get deployment globex-mobile -n globex-apim-user1 -o jsonpath='{.spec.template.spec.containers[0].env[?(@.name=="GLOBEX_MOBILE_GATEWAY")].value}' 2>/dev/null || echo "")
                   if [[ "$SSO_AUTHORITY" == *"placeholder"* ]] || [[ "$MOBILE_GATEWAY" == *"placeholder"* ]]; then
