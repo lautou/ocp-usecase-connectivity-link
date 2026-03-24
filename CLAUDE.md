@@ -833,12 +833,27 @@ If Red Hat updates their upstream images to fix these issues, we could switch ba
      - **Automatic re-run**: If deployments get deleted/recreated
 
    **Robustness Features:**
-   - ✅ All Jobs use ArgoCD PostSync hooks (automatic re-execution on sync)
+   - ✅ PostSync hooks run on Git commits and manual syncs (95% of cases)
    - ✅ Jobs use sync waves for proper ordering (1 → 2 → 3 → 4)
    - ✅ Jobs #3, #4, #5 run in parallel (same wave 3)
    - ✅ `BeforeHookCreation` delete policy prevents duplicate Jobs
    - ✅ `Force=true` allows Job recreation if manually deleted
-   - ✅ If resources get deleted/recreated, placeholders are automatically re-patched
+   - ✅ CronJob safety net catches edge cases (selfHeal scenarios)
+
+11. **Patch Monitor CronJob** (openshift-gitops namespace) - **Safety net for edge cases**
+   - **Schedule**: Every 10 minutes (`*/10 * * * *`)
+   - **Purpose**: Automatically detect and re-patch resources with placeholder values
+   - **Checks performed**:
+     - Gateway `prod-web` hostname (should be `*.globex.<cluster-domain>`)
+     - HTTPRoute `echo-api` hostname (should be `echo.globex.<cluster-domain>`)
+     - HTTPRoute `productcatalog` hostname (should be `catalog.globex.<cluster-domain>`)
+     - Deployment `globex-mobile` env vars (`SSO_AUTHORITY`, `SSO_REDIRECT_LOGOUT_URI`)
+     - Deployment `globex-mobile-gateway` env var (`KEYCLOAK_AUTH_SERVER_URL`)
+   - **Action**: If placeholder detected, automatically patches to correct value
+   - **Why needed**: ArgoCD selfHeal uses partial sync which doesn't trigger PostSync hooks
+   - **Benefit**: Zero manual intervention required, even when resources are manually deleted
+   - **File**: `openshift-gitops-cronjob-patch-monitor.yaml`
+   - **Execution time**: ~5 seconds per run (only patches if needed)
 
 11. **Keycloak Realm Import** (keycloak namespace)
    - **KeycloakRealmImport** (`keycloak-keycloakrealmimport-globex-user1.yaml`)
@@ -2250,10 +2265,9 @@ location.reload(true);
 - **Do NOT create Istio CR manually**: When using Gateway API integration, the Istio CR is managed by the Ingress Operator - creating it manually will cause conflicts
 - **One control plane, multiple data planes**: Each Gateway resource gets its own Envoy proxy deployment (data plane), but all share the same istiod control plane
 
-### Job Management (PostSync Hooks - Automatic Re-execution)
-- **✅ ALL JOBS USE POSTSYNC HOOKS**: Jobs automatically re-run on every ArgoCD sync
+### Job Management (PostSync Hooks + Safety Net)
+- **✅ HYBRID APPROACH**: PostSync hooks for Git commits + CronJob safety net for edge cases
 - **Execution order via sync waves**: PreSync (0) → PostSync (1 → 2 → 3 → 4)
-- **Automatic resource recreation**: If Gateway/HTTPRoute/Deployment gets deleted and recreated, placeholders are automatically re-patched (no manual intervention!)
 - **BeforeHookCreation policy**: Deletes old Job before creating new one (prevents duplicates)
 - **Idempotent operations**: All Jobs use `oc apply` or `oc patch` making them safe to re-run
 - **Completed Jobs are preserved**: No TTL cleanup - Jobs remain for audit/debugging
@@ -2266,7 +2280,23 @@ location.reload(true);
 - **File naming**: Follows convention `<namespace>-<kind>-<name>.yaml` (use `cluster-` prefix for cluster-scoped resources)
 - **ArgoCD drift**: ignoreDifferences configured to ignore hostname fields (managed by Jobs)
 - **Parent zone must be writable**: ACK needs permission to modify the public zone
-- **No manual re-running needed**: ArgoCD selfHeal automatically triggers Jobs when resources change
+
+**When PostSync hooks work (95% of cases)**:
+- ✅ Git commit → ArgoCD auto-sync → FULL sync → PostSync hooks run → Resources patched
+- ✅ Manual sync via ArgoCD UI/CLI → PostSync hooks run
+- ✅ Application initial deployment → PostSync hooks run
+
+**When PostSync hooks DON'T work (5% edge cases)**:
+- ❌ Manual resource deletion → selfHeal → Partial sync → PostSync hooks don't run
+- ⚠️ This is ArgoCD's design: hooks only trigger during complete sync cycles, not during selfHeal's partial syncs
+
+**Safety Net: Patch Monitor CronJob**:
+- **Purpose**: Automatically detect and re-patch resources with placeholder values
+- **Schedule**: Runs every 10 minutes (`*/10 * * * *`)
+- **Checks**: Gateway hostname, HTTPRoute hostnames, Deployment env vars
+- **Action**: Patches resources if placeholders detected, otherwise silent
+- **Benefit**: Zero manual intervention required, even for edge cases
+- **File**: `openshift-gitops-cronjob-patch-monitor.yaml`
 - **CRITICAL - Secret type**: AWS credentials Secret MUST have type `kuadrant.io/aws` (not `Opaque`) for DNSPolicy to work
 - **cert-manager DNS-01**: Requires `aws-acme` Secret (type `Opaque`) for wildcard certificate validation via Route53 TXT records
 - **Two AWS Secrets**: Job #1 creates both `aws-credentials` (DNSPolicy) and `aws-acme` (cert-manager) from same credentials

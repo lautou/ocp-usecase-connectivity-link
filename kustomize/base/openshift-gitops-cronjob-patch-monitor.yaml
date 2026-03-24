@@ -1,0 +1,122 @@
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: patch-monitor
+  namespace: openshift-gitops
+  labels:
+    app.kubernetes.io/name: patch-monitor
+    app.kubernetes.io/part-of: connectivity-link
+spec:
+  # Run every 10 minutes
+  schedule: "*/10 * * * *"
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 1
+  concurrencyPolicy: Forbid
+  jobTemplate:
+    spec:
+      template:
+        metadata:
+          labels:
+            app.kubernetes.io/name: patch-monitor
+        spec:
+          serviceAccountName: openshift-gitops-argocd-application-controller
+          restartPolicy: Never
+          containers:
+            - name: monitor
+              image: registry.redhat.io/openshift4/ose-cli:latest
+              command:
+                - /bin/bash
+                - -c
+                - |
+                  set -e
+
+                  echo "=========================================="
+                  echo "Patch Monitor - Checking for placeholders"
+                  echo "=========================================="
+                  echo ""
+
+                  NEEDS_PATCH=0
+                  BASE_DOMAIN=$(oc get dns cluster -o jsonpath='{.spec.baseDomain}')
+
+                  # Check Gateway hostname
+                  echo "[1/4] Checking Gateway prod-web hostname..."
+                  GATEWAY_HOSTNAME=$(oc get gateway prod-web -n ingress-gateway -o jsonpath='{.spec.listeners[0].hostname}' 2>/dev/null || echo "")
+                  if [[ "$GATEWAY_HOSTNAME" == *"placeholder"* ]]; then
+                    echo "  ⚠️  Gateway has placeholder: $GATEWAY_HOSTNAME"
+                    echo "  → Patching to: *.globex.${BASE_DOMAIN}"
+                    oc patch gateway prod-web -n ingress-gateway --type=json -p="[
+                      {\"op\": \"replace\", \"path\": \"/spec/listeners/0/hostname\", \"value\": \"*.globex.${BASE_DOMAIN}\"}
+                    ]"
+                    echo "  ✅ Gateway patched"
+                    NEEDS_PATCH=1
+                  else
+                    echo "  ✓ Gateway OK: $GATEWAY_HOSTNAME"
+                  fi
+                  echo ""
+
+                  # Check echo-api HTTPRoute
+                  echo "[2/4] Checking echo-api HTTPRoute hostname..."
+                  ECHO_HOSTNAME=$(oc get httproute echo-api -n echo-api -o jsonpath='{.spec.hostnames[0]}' 2>/dev/null || echo "")
+                  if [[ "$ECHO_HOSTNAME" == *"placeholder"* ]]; then
+                    echo "  ⚠️  HTTPRoute has placeholder: $ECHO_HOSTNAME"
+                    echo "  → Patching to: echo.globex.${BASE_DOMAIN}"
+                    oc patch httproute echo-api -n echo-api --type=json -p="[
+                      {\"op\": \"replace\", \"path\": \"/spec/hostnames/0\", \"value\": \"echo.globex.${BASE_DOMAIN}\"}
+                    ]"
+                    echo "  ✅ HTTPRoute patched"
+                    NEEDS_PATCH=1
+                  else
+                    echo "  ✓ HTTPRoute OK: $ECHO_HOSTNAME"
+                  fi
+                  echo ""
+
+                  # Check productcatalog HTTPRoute
+                  echo "[3/4] Checking productcatalog HTTPRoute hostname..."
+                  CATALOG_HOSTNAME=$(oc get httproute productcatalog -n ingress-gateway -o jsonpath='{.spec.hostnames[0]}' 2>/dev/null || echo "")
+                  if [[ "$CATALOG_HOSTNAME" == *"placeholder"* ]]; then
+                    echo "  ⚠️  HTTPRoute has placeholder: $CATALOG_HOSTNAME"
+                    echo "  → Patching to: catalog.globex.${BASE_DOMAIN}"
+                    oc patch httproute productcatalog -n ingress-gateway --type=json -p="[
+                      {\"op\": \"replace\", \"path\": \"/spec/hostnames/0\", \"value\": \"catalog.globex.${BASE_DOMAIN}\"}
+                    ]"
+                    echo "  ✅ HTTPRoute patched"
+                    NEEDS_PATCH=1
+                  else
+                    echo "  ✓ HTTPRoute OK: $CATALOG_HOSTNAME"
+                  fi
+                  echo ""
+
+                  # Check globex-mobile deployment
+                  echo "[4/4] Checking globex-mobile deployment env vars..."
+                  SSO_AUTHORITY=$(oc get deployment globex-mobile -n globex-apim-user1 -o jsonpath='{.spec.template.spec.containers[0].env[?(@.name=="SSO_AUTHORITY")].value}' 2>/dev/null || echo "")
+                  if [[ "$SSO_AUTHORITY" == *"placeholder"* ]]; then
+                    echo "  ⚠️  Deployment has placeholder in SSO_AUTHORITY"
+                    echo "  → Running globex-env patching..."
+
+                    KEYCLOAK_URL="https://keycloak-keycloak.apps.${BASE_DOMAIN}/realms/globex-user1"
+                    LOGOUT_URI="https://globex-mobile-globex-apim-user1.apps.${BASE_DOMAIN}/home"
+
+                    oc patch deployment globex-mobile -n globex-apim-user1 --type=json -p="[
+                      {\"op\": \"replace\", \"path\": \"/spec/template/spec/initContainers/0/env/0/value\", \"value\": \"${KEYCLOAK_URL}\"},
+                      {\"op\": \"replace\", \"path\": \"/spec/template/spec/containers/0/env/9/value\", \"value\": \"${KEYCLOAK_URL}\"},
+                      {\"op\": \"replace\", \"path\": \"/spec/template/spec/containers/0/env/10/value\", \"value\": \"${LOGOUT_URI}\"}
+                    ]"
+
+                    oc patch deployment globex-mobile-gateway -n globex-apim-user1 --type=json -p="[
+                      {\"op\": \"replace\", \"path\": \"/spec/template/spec/containers/0/env/1/value\", \"value\": \"${KEYCLOAK_URL}\"}
+                    ]"
+
+                    echo "  ✅ Deployments patched"
+                    NEEDS_PATCH=1
+                  else
+                    echo "  ✓ Deployment OK"
+                  fi
+                  echo ""
+
+                  echo "=========================================="
+                  if [ $NEEDS_PATCH -eq 1 ]; then
+                    echo "✅ Patching completed successfully!"
+                  else
+                    echo "✅ All resources OK - no patching needed"
+                  fi
+                  echo "=========================================="

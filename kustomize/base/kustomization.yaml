@@ -67,3 +67,4 @@ resources:
   - openshift-gitops-job-globex-ns-delegation.yaml
   - openshift-gitops-job-productcatalog-httproute.yaml
   - openshift-gitops-job-force-realm-reimport.yaml
+  - openshift-gitops-cronjob-patch-monitor.yaml
