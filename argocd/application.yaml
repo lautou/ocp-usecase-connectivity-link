@@ -26,12 +26,6 @@ spec:
       namespace: echo-api
       jsonPointers:
         - /spec/hostnames
-    - group: gateway.networking.k8s.io
-      kind: HTTPRoute
-      name: productcatalog
-      namespace: ingress-gateway
-      jsonPointers:
-        - /spec/hostnames
     - group: apps
       kind: Deployment
       name: globex-mobile
