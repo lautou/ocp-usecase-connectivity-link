@@ -21,7 +21,7 @@ spec:
       serviceAccountName: globex-mobile
       initContainers:
         - name: patch-placeholder
-          image: quay.io/laurenttourreau/globex-mobile:rhbk26-authcode-flow-v2
+          image: quay.io/cloud-architecture-workshop/globex-mobile:latest
           command:
             - /bin/sh
             - -c
@@ -48,7 +48,7 @@ spec:
               mountPath: /app
       containers:
         - name: globex-mobile
-          image: quay.io/laurenttourreau/globex-mobile:rhbk26-authcode-flow-v2
+          image: quay.io/cloud-architecture-workshop/globex-mobile:latest
           ports:
             - containerPort: 8080
           volumeMounts:
