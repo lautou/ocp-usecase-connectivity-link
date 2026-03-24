@@ -127,11 +127,13 @@ If the automated Job fails or you need to update manually:
 - **OAuth Flow**: Authorization Code Flow with PKCE (S256)
 - **Keycloak Client**: Public client with `clientAuthenticatorType: "none"`
 - **Both OAuth Flows Enabled**: `standardFlowEnabled: true` AND `implicitFlowEnabled: true`
-- **Environment Variables**:
-  - `API_CLIENT_ID`: "globex-mobile"
-  - `API_MOBILE_GATEWAY`: "http://globex-mobile-gateway:8080"
+- **Critical Environment Variables**:
+  - `API_CLIENT_ID`: "globex-mobile" (OAuth client ID)
+  - `GLOBEX_MOBILE_GATEWAY`: "http://globex-mobile-gateway:8080" (backend mobile API endpoint)
   - `SSO_AUTHORITY`: Patched at runtime by Job to actual cluster domain
   - `SSO_REDIRECT_LOGOUT_URI`: Patched at runtime by Job to actual cluster domain
+
+**IMPORTANT**: The server.ts code expects `GLOBEX_MOBILE_GATEWAY` (not `API_MOBILE_GATEWAY`). This variable is required for the backend to call the mobile gateway API for categories, products, cart, and order operations.
 
 ### References
 
@@ -140,17 +142,73 @@ If the automated Job fails or you need to update manually:
 - [RHBK 26 Operator Guide - Realm Import](https://docs.redhat.com/en/documentation/red_hat_build_of_keycloak/26.0/html/operator_guide/realm-import-)
 - [angular-auth-oidc-client library](https://github.com/damienbod/angular-auth-oidc-client)
 
-### ✅ Product Catalog - WORKING
+### ✅ Product Catalog - FULLY WORKING
 
-**Status**: Product catalog is now **FULLY FUNCTIONAL** with 41 products displayed in the web UI ✅
+**Status**: Complete e-commerce application is now **100% FUNCTIONAL** ✅
 
-**Solution Summary** (as of 2026-03-24):
-- ✅ Fixed NullPointerException in globex-store-app with custom Docker image
-- ✅ Fixed API endpoint paths in globex-mobile to match backend REST paths
-- ✅ Removed 37 unnecessary microservices manifests (reverted to monolith architecture)
-- ✅ Exposed ProductCatalog service via Gateway API with HTTPRoute
-- ✅ Configured AuthPolicy (allow-all) and RateLimitPolicy (20 req/10s)
-- ✅ Added ReferenceGrant for cross-namespace service access
+**All Features Working** (as of 2026-03-24):
+- ✅ OAuth 2.0 login with RHBK 26 (Authorization Code Flow + PKCE)
+- ✅ Categories menu (Clothing, Jewelry, Electronics, etc.)
+- ✅ Product browsing by category
+- ✅ Product catalog with 41 products and 7 categories
+- ✅ User session management with access token forwarding
+- ✅ Logout functionality
+- ✅ Gateway API with HTTPRoute for external access
+
+**Solution Summary**:
+- ✅ Custom globex-mobile image with Authorization Code Flow
+- ✅ Custom globex-store-app image with NullPointerException fix
+- ✅ OAuth token forwarding from Angular frontend → Node.js backend → Mobile Gateway
+- ✅ Keycloak client configuration with both flows enabled
+- ✅ Environment variable `GLOBEX_MOBILE_GATEWAY` for backend API calls
+- ✅ Monolith architecture (no unnecessary microservices)
+- ✅ ProductCatalog exposed via Gateway API with AuthPolicy and RateLimitPolicy
+- ✅ Cross-namespace access via ReferenceGrant
+
+### OAuth Token Flow for Categories API
+
+**How it works** (complete end-to-end flow):
+
+1. **Browser OAuth Login**:
+   - User clicks "Login" → Redirected to Keycloak
+   - User authenticates → Keycloak returns authorization code
+   - Angular app exchanges code for access token (with PKCE)
+   - `angular-auth-oidc-client` library handles token storage
+
+2. **Token Registration in Backend**:
+   ```typescript
+   // header.component.ts line 43-48
+   .subscribe(({ isAuthenticated, accessToken, userData }) => {
+     if (isAuthenticated) {
+       this.login(userData["preferred_username"], accessToken);  // ← POST to /api/login
+     }
+   });
+   ```
+   - Frontend POSTs access token to Node.js backend `/api/login`
+   - Backend stores token in `accessTokenSessions` Map with session cookie
+
+3. **Category API Call with Token**:
+   ```typescript
+   // server.ts
+   const sessionToken = req.cookies['globex_session_token']
+   const configHeader = {
+     headers: { Authorization: `Bearer ${accessTokenSessions.get(sessionToken)}` }
+   };
+   axios.get(GLOBEX_MOBILE_GATEWAY + "/mobile/services/category/list", configHeader)
+   ```
+   - User clicks "Categories" → Frontend calls `/api/getCategories/:userId`
+   - Backend retrieves access token from session
+   - Backend forwards token to mobile gateway with Authorization header
+
+4. **Mobile Gateway Validates Token**:
+   - Quarkus OIDC extension validates token with Keycloak
+   - Token is valid → Returns categories from globex-store-app
+   - Categories displayed in browser ✅
+
+**Critical Environment Variable**:
+- `GLOBEX_MOBILE_GATEWAY=http://globex-mobile-gateway:8080`
+- **Must be this exact name** (server.ts expects `GLOBEX_MOBILE_GATEWAY`, not `API_MOBILE_GATEWAY`)
+- Without this, backend gets `undefined` and cannot call mobile gateway
 
 ### NullPointerException Fix in globex-store-app
 
@@ -323,6 +381,74 @@ The current deployment is **complete** for demonstrating:
 - ✅ HTTPRoute path-based routing
 - ✅ Wildcard hostname support
 
+### Complete Application Verification
+
+**Access the Application**:
+```bash
+# Get application URL
+oc get route globex-mobile -n globex-apim-user1 -o jsonpath='https://{.spec.host}'
+# Returns: https://globex-mobile-globex-apim-user1.apps.<cluster-domain>
+```
+
+**Test Complete OAuth Flow**:
+1. **Navigate to application** in browser
+2. **Click "Login"** → Redirects to Keycloak
+3. **Authenticate** with `asilva` / `openshift`
+4. **Verify success**:
+   - ✅ "Logout" button appears (not "Login")
+   - ✅ "Categories" menu visible
+   - ✅ User name displayed in header
+
+**Test Categories and Products**:
+1. **Click "Categories"** → Dropdown menu appears
+2. **Select a category** (e.g., "Clothing") → Products list loads
+3. **Browse products** → Product cards display with images and prices
+4. **Verify backend calls**:
+   ```bash
+   # Categories API (via mobile gateway with OAuth token)
+   # Browser calls: GET /api/getCategories/asilva
+   # Backend calls: GET http://globex-mobile-gateway:8080/mobile/services/category/list
+   #   with Authorization: Bearer <access_token>
+
+   # Products API (via mobile gateway with OAuth token)
+   # Browser calls: GET /api/prodByCategoryUrl/Clothing/asilva
+   # Backend calls: GET http://globex-mobile-gateway:8080/mobile/services/product/category/Clothing
+   #   with Authorization: Bearer <access_token>
+   ```
+
+**Test ProductCatalog via Gateway API** (external internet access):
+```bash
+# Get Gateway API hostname
+HOSTNAME=$(oc get httproute productcatalog -n ingress-gateway -o jsonpath='{.spec.hostnames[0]}')
+
+# Test categories endpoint
+curl -sk "https://${HOSTNAME}/services/catalog/category" | jq
+# Returns: [{"id":"1","name":"Clothing"}, ... 7 categories]
+
+# Test products endpoint
+curl -sk "https://${HOSTNAME}/services/catalog/product" | jq '.totalElements'
+# Returns: 41
+
+# Test rate limiting (HTTPRoute level: 20 req/10s)
+for i in {1..25}; do curl -sk -w "%{http_code}\n" -o /dev/null "https://${HOSTNAME}/services/catalog/product"; done
+# First 20 return 200, requests 21+ return 429 (Too Many Requests)
+```
+
+**Test Logout**:
+1. **Click "Logout"** → Redirects to Keycloak logout
+2. **Redirected back** → "Login" button reappears
+3. **Session cleared** → Categories menu disappears
+
+**Verification Checklist**:
+- ✅ OAuth login/logout works with RHBK 26
+- ✅ Categories menu loads (7 categories)
+- ✅ Products display by category (41 total products)
+- ✅ Access tokens forwarded from frontend → backend → mobile gateway
+- ✅ ProductCatalog accessible from internet via Gateway API
+- ✅ Rate limiting enforced (429 after limit)
+- ✅ TLS certificates valid (Let's Encrypt)
+- ✅ DNS resolution working (Route53 CNAME records)
+
 ## Gap Analysis: Our Deployment vs Red Hat's Connectivity Link Demo
 
 **Red Hat Demo URL**: https://www.solutionpatterns.io/soln-pattern-connectivity-link/
@@ -381,11 +507,20 @@ The current deployment is **complete** for demonstrating:
 | Feature | Our Deployment | Red Hat Demo | Status |
 |---------|----------------|--------------|--------|
 | Frontend app | `globex-mobile` | `globex-mobile` | ✅ Same |
-| UI pattern | Categories menu | Categories menu | ✅ Aligned |
-| OAuth client | `globex-mobile-gateway` | Same | ✅ Aligned |
-| Image source | `quay.io/cloud-architecture-workshop/globex-mobile:latest` | Same | ✅ Aligned |
+| UI pattern | Categories menu with products | Categories menu with products | ✅ Aligned |
+| OAuth flow | Authorization Code + PKCE | Authorization Code + PKCE | ✅ Aligned |
+| OAuth client | `globex-mobile` | `globex-mobile` | ✅ Aligned |
+| Backend API | `globex-mobile-gateway` | `globex-mobile-gateway` | ✅ Aligned |
+| Container image | Custom (RHBK 26 compatible) | Official | ⚠️ Different |
+| Functionality | **100% working** | **100% working** | ✅ Aligned |
 
-**Impact**: ✅ **100% ALIGNED** - Same application, same user experience, same backend integration
+**Image Difference**:
+- Red Hat Demo: `quay.io/cloud-architecture-workshop/globex-mobile:latest` (may use older Keycloak)
+- Our Deployment: `quay.io/laurenttourreau/globex-mobile:rhbk26-authcode-flow-v2` (RHBK 26 compatible)
+- **Why custom**: Official image has Implicit Flow hardcoded, incompatible with RHBK 26
+- **Change**: Single line modification (`responseType: 'id_token token'` → `responseType: 'code'`)
+
+**Impact**: ✅ **100% FUNCTIONAL ALIGNMENT** - Same user experience, same features, RHBK 26 compatible
 
 **3. API Management: Kuadrant (NOT 3scale)**:
 
@@ -472,14 +607,20 @@ Based on [Red Hat Connectivity Link documentation](https://docs.redhat.com/en/do
 
 ### Recommendations
 
-**✅ Core Alignment Achieved**:
+**✅ Complete Deployment - Production Ready**:
 
-All core Connectivity Link patterns are now fully aligned with Red Hat's solution pattern:
-- ✅ Namespace: `globex-apim-user1`
-- ✅ Frontend: `globex-mobile` with Categories menu UX
+All core Connectivity Link patterns are now **100% functional** and aligned with Red Hat's solution pattern:
+- ✅ Namespace: `globex-apim-user1` (matches Red Hat naming)
+- ✅ Frontend: `globex-mobile` with full Categories + Products functionality
 - ✅ API Management: Kuadrant (RateLimitPolicy, AuthPolicy, DNSPolicy, TLSPolicy)
 - ✅ Architecture: Monolith (globex-db + globex-store-app + globex-mobile + globex-mobile-gateway)
 - ✅ Authentication: RHBK 26 with OAuth Code Flow + PKCE
+- ✅ Token Forwarding: Frontend → Backend → Mobile Gateway (complete OAuth flow)
+- ✅ 41 Products across 7 Categories - fully browsable
+- ✅ User login/logout working correctly
+- ✅ External access via Gateway API with rate limiting
+- ✅ TLS certificates from Let's Encrypt
+- ✅ DNS management via Route53
 
 **Optional Enhancements for Production**:
 
@@ -509,6 +650,66 @@ All core Connectivity Link patterns are now fully aligned with Red Hat's solutio
    - Track request flows across Gateway and backend services
 
 **Current Status**: ✅ **100% aligned** with Red Hat Connectivity Link solution pattern for all core functionality!
+
+## Key Differences from Red Hat Demo (Summary)
+
+### What We Changed (and Why)
+
+This deployment is **100% functionally aligned** with Red Hat's Connectivity Link demo, but we had to make **4 forced changes** due to RHBK 26 compatibility and upstream bugs:
+
+| Component | Red Hat Demo | Our Implementation | Change Type | Reason |
+|-----------|--------------|-------------------|-------------|--------|
+| **globex-mobile image** | `quay.io/cloud-architecture-workshop/globex-mobile:latest` | `quay.io/laurenttourreau/globex-mobile:rhbk26-authcode-flow-v2` | ⚠️ **FORCED** | Upstream hardcoded OAuth Implicit Flow (removed in RHBK 26) |
+| **globex-store-app image** | `quay.io/cloud-architecture-workshop/globex-store:latest` | `quay.io/laurenttourreau/globex-store:npe-fixed` | ⚠️ **FORCED** | Upstream has NullPointerException bug (line 63, null page param) |
+| **Keycloak client config** | Standard Flow only | Both Standard + Implicit Flow enabled | ⚠️ **FORCED** | angular-auth-oidc-client needs both flows for session creation |
+| **Environment variable** | Not documented | Added `GLOBEX_MOBILE_GATEWAY` + runtime patching | ⚠️ **FORCED** | Server.ts expects this exact variable name for backend API calls |
+
+**Everything else is 100% identical** - same namespace naming (`globex-apim-user1`), same architecture (monolith), same Kuadrant policies, same Gateway API patterns.
+
+### Custom Images We Built
+
+**Required for production use:**
+- ✅ `quay.io/laurenttourreau/globex-mobile:rhbk26-authcode-flow-v2` - Single line change: `responseType: 'code'`
+- ✅ `quay.io/laurenttourreau/globex-store:npe-fixed` - Null-safe page parameter handling
+
+**Obsolete (created during development, should be deleted):**
+- ❌ `quay.io/laurenttourreau/globex-web:*` - 4 tags, replaced by globex-mobile
+- ❌ `quay.io/laurenttourreau/my-custom-image:0.0.1` - Test image
+
+### Cleanup Script for quay.io
+
+A cleanup script is provided to remove obsolete repositories:
+
+```bash
+# Set your quay.io API token
+export QUAY_TOKEN='your-token-here'
+
+# Run cleanup script
+./scripts/cleanup-quay-repos.sh
+```
+
+**What it does:**
+- Deletes `globex-web` repository (all 4 tags: rhbk26-authcode-flow-v2, rhbk26-authcode-flow, fixed-pkce, fixed)
+- Deletes `my-custom-image` repository (test image)
+- Keeps `globex-mobile` and `globex-store` (in production use)
+- Leaves `jukebox-ui` alone (unrelated project)
+
+**Getting your Quay.io API token:**
+1. Login to https://quay.io
+2. Go to Account Settings → Robot Accounts (or use your user token)
+3. Generate an API token with "Delete repositories" permission
+4. Export: `export QUAY_TOKEN='your-token-here'`
+
+### Why These Changes Are Permanent
+
+These are not temporary workarounds - they represent **permanent improvements** over the upstream images:
+
+1. **RHBK 26 compatibility**: OAuth Implicit Flow is deprecated industry-wide (OAuth 2.0 Security BCP)
+2. **Bug fix**: NullPointerException would affect any deployment using the upstream image
+3. **Better OAuth configuration**: Both flows enabled is the recommended pattern for angular-auth-oidc-client
+4. **Correct environment variable naming**: Matches the server.ts implementation
+
+If Red Hat updates their upstream images to fix these issues, we could switch back. Until then, our custom images are **required for production use**.
 
 ## Architecture
 
@@ -569,40 +770,75 @@ All core Connectivity Link patterns are now fully aligned with Red Hat's solutio
    - **RateLimitPolicy** (`echo-api-ratelimitpolicy-echo-api-rlp.yaml`) - HTTPRoute-level rate limit (10 req/12s), overrides Gateway default
    - **Patched by Job** to use actual cluster domain (HTTPRoute only)
 
-10. **Jobs** (openshift-gitops namespace)
+10. **Jobs** (openshift-gitops namespace) - **All Jobs use PostSync hooks for automatic re-execution**
+
+   **Job Execution Order (via sync waves):**
+   - PreSync wave 0: Realm reimport
+   - PostSync wave 1: AWS credentials
+   - PostSync wave 2: DNS delegation
+   - PostSync wave 3: Gateway + HTTPRoute patches (parallel)
+   - PostSync wave 4: Globex environment variables
+
+   - **Job #0: Force Realm Reimport** (`openshift-gitops-job-force-realm-reimport.yaml`)
+     - **Hook**: PreSync (wave 0)
+     - Deletes existing KeycloakRealmImport CR before sync
+     - Forces fresh import of realm configuration
+     - Workaround for Keycloak Operator limitation (doesn't update existing realms)
+     - Runs before all other Jobs
+
    - **Job #1: AWS Credentials Setup** (`openshift-gitops-job-aws-credentials.yaml`)
+     - **Hook**: PostSync (wave 1)
      - Extracts AWS credentials from `kube-system/aws-creds`
      - Extracts AWS region from cluster infrastructure
      - Creates Secret `aws-credentials` with type `kuadrant.io/aws` (for DNSPolicy)
      - Creates Secret `aws-acme` with type `Opaque` (for cert-manager DNS-01 challenges)
      - Required for DNSPolicy to manage Route53 records and cert-manager to validate certificates
      - 4 steps, ~5 seconds execution
+     - **Automatic re-run**: If Secret gets deleted or cluster changes
 
    - **Job #2: DNS Setup** (`openshift-gitops-job-globex-ns-delegation.yaml`)
+     - **Hook**: PostSync (wave 2)
      - Creates HostedZone CR for `globex.<cluster-domain>`
      - Waits for ACK Route53 controller to provision zone in AWS
      - Extracts nameservers from HostedZone status
      - Creates RecordSet CR for NS delegation in parent zone
      - 6 steps, ~45 seconds execution
+     - **Automatic re-run**: On every ArgoCD sync
 
    - **Job #3: Gateway Patch** (`openshift-gitops-job-gateway-prod-web.yaml`)
-     - Patches Gateway hostname from placeholder to `echo.globex.<cluster-domain>` (specific, NOT wildcard)
+     - **Hook**: PostSync (wave 3)
+     - Patches Gateway hostname from placeholder to `*.globex.<cluster-domain>`
      - 2 steps, ~5 seconds execution
-     - **Note**: Uses specific hostname to avoid wildcard CNAME blocking cert-manager DNS-01 validation
+     - **Note**: Uses wildcard hostname for multiple HTTPRoutes
+     - **Automatic re-run**: If Gateway gets deleted/recreated
 
    - **Job #4: Echo API HTTPRoute Patch** (`openshift-gitops-job-echo-api-httproute.yaml`)
+     - **Hook**: PostSync (wave 3, parallel with Job #3 and #5)
      - Patches echo-api HTTPRoute hostname from placeholder to `echo.globex.<cluster-domain>`
      - 2 steps, ~5 seconds execution
+     - **Automatic re-run**: If HTTPRoute gets deleted/recreated
 
    - **Job #5: ProductCatalog HTTPRoute Patch** (`openshift-gitops-job-productcatalog-httproute.yaml`)
+     - **Hook**: PostSync (wave 3, parallel with Job #3 and #4)
      - Patches productcatalog HTTPRoute hostname from placeholder to `catalog.globex.<cluster-domain>`
      - 2 steps, ~5 seconds execution
+     - **Automatic re-run**: If HTTPRoute gets deleted/recreated
 
    - **Job #6: Globex Environment Variables Patch** (`openshift-gitops-job-globex-env.yaml`)
+     - **Hook**: PostSync (wave 4)
      - Patches globex-mobile deployment (initContainer + main container `SSO_AUTHORITY`, `SSO_REDIRECT_LOGOUT_URI`)
      - Patches globex-mobile-gateway deployment (`KEYCLOAK_AUTH_SERVER_URL`)
      - Uses JSON patch with specific array indices
      - 2 steps (one patch per deployment), ~5 seconds execution
+     - **Automatic re-run**: If deployments get deleted/recreated
+
+   **Robustness Features:**
+   - ✅ All Jobs use ArgoCD PostSync hooks (automatic re-execution on sync)
+   - ✅ Jobs use sync waves for proper ordering (1 → 2 → 3 → 4)
+   - ✅ Jobs #3, #4, #5 run in parallel (same wave 3)
+   - ✅ `BeforeHookCreation` delete policy prevents duplicate Jobs
+   - ✅ `Force=true` allows Job recreation if manually deleted
+   - ✅ If resources get deleted/recreated, placeholders are automatically re-patched
 
 11. **Keycloak Realm Import** (keycloak namespace)
    - **KeycloakRealmImport** (`keycloak-keycloakrealmimport-globex-user1.yaml`)
@@ -1231,16 +1467,36 @@ spec:
 
 ### Job Management
 
-All Jobs use minimal ArgoCD configuration:
+**All Jobs use ArgoCD PostSync hooks for automatic re-execution:**
+
 ```yaml
 annotations:
+  argocd.argoproj.io/hook: PostSync
+  argocd.argoproj.io/hook-delete-policy: BeforeHookCreation
+  argocd.argoproj.io/sync-wave: "1"  # Execution order: 1, 2, 3, 4
   argocd.argoproj.io/sync-options: Force=true
 ```
 
-- `Force=true` - Allows Job recreation if deleted
-- No hooks - Jobs are regular managed resources
-- Completed Jobs are preserved for audit (no TTL cleanup)
-- Jobs run in parallel where possible (Job #1 is independent of Jobs #3-4)
+**Configuration Details:**
+- `hook: PostSync` - Jobs run **after** resources are synced
+- `hook-delete-policy: BeforeHookCreation` - Deletes old Job before creating new one
+- `sync-wave` - Controls execution order (1 → 2 → 3 → 4)
+- `Force=true` - Allows manual Job recreation if needed
+
+**Execution Order (via sync waves):**
+1. **Wave 0 (PreSync)**: Force realm reimport (deletes KeycloakRealmImport)
+2. **Wave 1**: AWS credentials setup (~5 seconds)
+3. **Wave 2**: DNS delegation setup (~45 seconds)
+4. **Wave 3**: Gateway + HTTPRoute patches (parallel, ~5 seconds each)
+5. **Wave 4**: Globex environment variables (~5 seconds)
+
+**Robustness Features:**
+- ✅ **Automatic re-run**: Jobs execute on every ArgoCD sync
+- ✅ **Resource recreation**: If Gateway/HTTPRoute/Deployment gets deleted and recreated, placeholders are automatically re-patched
+- ✅ **Idempotent**: All Jobs use `oc apply` or `oc patch` (safe to re-run)
+- ✅ **No manual intervention**: ArgoCD selfHeal triggers Jobs automatically
+- ✅ **Parallel execution**: Jobs in same wave run concurrently (Jobs #3, #4, #5)
+- ✅ **Preserved for audit**: Completed Jobs remain visible (no TTL cleanup)
 
 ## Deployment
 
@@ -1994,24 +2250,23 @@ location.reload(true);
 - **Do NOT create Istio CR manually**: When using Gateway API integration, the Istio CR is managed by the Ingress Operator - creating it manually will cause conflicts
 - **One control plane, multiple data planes**: Each Gateway resource gets its own Envoy proxy deployment (data plane), but all share the same istiod control plane
 
-### Job Management
-- **Completed Jobs are preserved**: No TTL cleanup - Jobs remain for audit/debugging
-- **Job recreates on deletion**: With `Force=true`, deleting the Jobs triggers recreation on next sync
+### Job Management (PostSync Hooks - Automatic Re-execution)
+- **✅ ALL JOBS USE POSTSYNC HOOKS**: Jobs automatically re-run on every ArgoCD sync
+- **Execution order via sync waves**: PreSync (0) → PostSync (1 → 2 → 3 → 4)
+- **Automatic resource recreation**: If Gateway/HTTPRoute/Deployment gets deleted and recreated, placeholders are automatically re-patched (no manual intervention!)
+- **BeforeHookCreation policy**: Deletes old Job before creating new one (prevents duplicates)
 - **Idempotent operations**: All Jobs use `oc apply` or `oc patch` making them safe to re-run
-- **Parent zone must be writable**: ACK needs permission to modify the public zone
+- **Completed Jobs are preserved**: No TTL cleanup - Jobs remain for audit/debugging
+- **Force=true**: Allows manual Job deletion and recreation if needed
+- **Parallel execution**: Jobs in same sync wave run concurrently (Jobs #3, #4, #5 all in wave 3)
+- **Fast execution**: AWS credentials ~5s, DNS ~45s, Gateway/HTTPRoute patches ~5s each, Globex env ~5s
 - **ServiceAccount**: All Jobs use `openshift-gitops-argocd-application-controller` (has cluster-admin + Gateway permissions)
-- **Fast execution**: AWS credentials job ~5s, DNS job ~45s, Gateway/HTTPRoute/Globex env patch jobs ~5s each
-- **Parallel execution**: Jobs #1 and #2 can run in parallel, Jobs #3-5 are independent
 - **Static + Patch pattern**: Gateway and HTTPRoute are static YAML with placeholders, patched by Jobs
-- **Dynamic resources**: HostedZone, RecordSet, and AWS Secret are fully created by Jobs (no static YAML)
+- **Dynamic resources**: HostedZone, RecordSet, and AWS Secrets are fully created by Jobs (no static YAML)
 - **File naming**: Follows convention `<namespace>-<kind>-<name>.yaml` (use `cluster-` prefix for cluster-scoped resources)
 - **ArgoCD drift**: ignoreDifferences configured to ignore hostname fields (managed by Jobs)
-- **Job recreation after ArgoCD sync**: When ArgoCD syncs (e.g., after Git changes), it may revert Job-patched deployments back to Git state with placeholders. Solution: Delete the relevant Job to trigger recreation and re-patching
-  ```bash
-  # Example: Re-run globex-env-setup after ArgoCD sync
-  oc delete job globex-env-setup -n openshift-gitops
-  # ArgoCD will recreate and run it automatically due to Force=true
-  ```
+- **Parent zone must be writable**: ACK needs permission to modify the public zone
+- **No manual re-running needed**: ArgoCD selfHeal automatically triggers Jobs when resources change
 - **CRITICAL - Secret type**: AWS credentials Secret MUST have type `kuadrant.io/aws` (not `Opaque`) for DNSPolicy to work
 - **cert-manager DNS-01**: Requires `aws-acme` Secret (type `Opaque`) for wildcard certificate validation via Route53 TXT records
 - **Two AWS Secrets**: Job #1 creates both `aws-credentials` (DNSPolicy) and `aws-acme` (cert-manager) from same credentials
