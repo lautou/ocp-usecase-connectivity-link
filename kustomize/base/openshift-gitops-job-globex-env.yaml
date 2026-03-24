@@ -68,8 +68,8 @@ spec:
               echo "[4/5] Patching globex-mobile Deployment environment variables..."
               oc patch deployment globex-mobile -n globex-apim-user1 --type=json -p="[
                 {\"op\": \"replace\", \"path\": \"/spec/template/spec/initContainers/0/env/0/value\", \"value\": \"${KEYCLOAK_URL}\"},
-                {\"op\": \"replace\", \"path\": \"/spec/template/spec/containers/0/env/8/value\", \"value\": \"${KEYCLOAK_URL}\"},
-                {\"op\": \"replace\", \"path\": \"/spec/template/spec/containers/0/env/9/value\", \"value\": \"${LOGOUT_URI}\"}
+                {\"op\": \"replace\", \"path\": \"/spec/template/spec/containers/0/env/9/value\", \"value\": \"${KEYCLOAK_URL}\"},
+                {\"op\": \"replace\", \"path\": \"/spec/template/spec/containers/0/env/10/value\", \"value\": \"${LOGOUT_URI}\"}
               ]"
               echo "✓ globex-mobile patched"
               echo ""
