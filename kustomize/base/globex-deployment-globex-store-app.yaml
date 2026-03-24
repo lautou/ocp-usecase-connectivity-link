@@ -21,7 +21,7 @@ spec:
       serviceAccountName: globex-store-app
       containers:
         - name: globex-store-app
-          image: quay.io/cloud-architecture-workshop/globex-store:latest
+          image: quay.io/laurenttourreau/globex-store:npe-fixed
           ports:
             - containerPort: 8080
           env:
