@@ -993,7 +993,7 @@ ArgoCD Application
     ↓
 Kustomize Overlay (default)
     ↓
-Kustomize Base (42 manifests)
+Kustomize Base (43 manifests)
     ├── Namespaces (echo-api, ingress-gateway, globex)
     ├── RBAC (ClusterRole, ClusterRoleBinding)
     ├── GatewayClass (istio)
@@ -1019,7 +1019,8 @@ Kustomize Base (42 manifests)
     │   ├── Backend: globex-store-app (Deployment + Service + ServiceAccount, NPE-fixed image)
     │   ├── Frontend: globex-mobile (Deployment + Service + ServiceAccount + Route)
     │   └── Mobile API: globex-mobile-gateway (Deployment + Service + ServiceAccount + Route)
-    └── Jobs (7 total: AWS credentials, DNS setup, Gateway patch, 2× HTTPRoute patches, Globex env vars, Keycloak realm reimport)
+    ├── Jobs (7 total: AWS credentials, DNS setup, Gateway patch, 2× HTTPRoute patches, Globex env vars, Keycloak realm reimport)
+    └── CronJob (1 total: Patch monitor running every 10 minutes as safety net)
 
 Jobs execute in sequence:
     PreSync Hook → force-realm-reimport (deletes KeycloakRealmImport CR for updates)
@@ -1057,6 +1058,8 @@ End Result:
     ✅ ProductCatalog service exposed via HTTPRoute (20 req/10s rate limit)
     ✅ Echo API service exposed via HTTPRoute (10 req/12s rate limit)
     ✅ Cross-namespace service access working via ReferenceGrant
+    ✅ Automatic placeholder patching (PostSync hooks + CronJob safety net)
+    ✅ Zero manual intervention required for placeholder replacement
 ```
 
 ## Prerequisites
@@ -1783,6 +1786,7 @@ See [SECURITY.md](SECURITY.md) for complete security documentation.
 │   │   ├── openshift-gitops-job-globex-env.yaml
 │   │   ├── openshift-gitops-job-globex-ns-delegation.yaml
 │   │   ├── openshift-gitops-job-productcatalog-httproute.yaml
+│   │   ├── openshift-gitops-cronjob-patch-monitor.yaml
 │   │   └── kustomization.yaml
 │   └── overlays/
 │       └── default/
@@ -1810,7 +1814,8 @@ See [SECURITY.md](SECURITY.md) for complete security documentation.
 - globex routes: 2 (globex-mobile, globex-mobile-gateway)
 - Keycloak: 1 (KeycloakRealmImport with ⚠️ DEMO SECRETS)
 - Jobs: 7 (AWS credentials, DNS setup, Gateway patch, 2× HTTPRoute patches, Globex env vars, Keycloak realm reimport)
-- **Total**: 42 manifests (1 kustomization.yaml + 41 resource files)
+- CronJob: 1 (Patch monitor - safety net for automatic placeholder patching)
+- **Total**: 44 manifests (1 kustomization.yaml + 43 resource files)
 
 **File Naming Convention**: `<namespace>-<kind>-<name>.yaml`
 - `cluster-*` for cluster-scoped resources (no namespace)

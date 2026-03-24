@@ -25,10 +25,14 @@ Everything is managed via GitOps using ArgoCD with **100% dynamic configuration*
 8. **Echo API Application** - Demo service with allow-all AuthPolicy and HTTPRoute-level RateLimitPolicy (10 req/12s)
 9. **Keycloak Realm Import** - Optional Globex demo realm with users and OAuth clients (for testing/demo only)
 10. **Globex Application Stack** - Full demo e-commerce application:
-    - **globex-db** - PostgreSQL database
-    - **globex-store-app** - Quarkus backend REST API
+    - **globex-db** - PostgreSQL database (41 products, 7 categories)
+    - **globex-store-app** - Quarkus backend REST API (custom NPE-fixed image)
     - **globex-mobile-gateway** - Quarkus mobile API gateway with OAuth
-    - **globex-web** - Angular SSR web application with OAuth (exposed via OpenShift Route)
+    - **globex-mobile** - Angular SSR web application with OAuth (RHBK 26 compatible, exposed via OpenShift Route)
+11. **Automated Patching** - Jobs with PostSync hooks + CronJob safety net:
+    - PostSync hooks run on every Git commit (95% of cases)
+    - CronJob monitors resources every 10 minutes (5% edge cases)
+    - Zero manual intervention required
 
 ## Prerequisites
 
@@ -105,15 +109,26 @@ oc apply -f argocd/application.yaml
 # Watch Application status
 oc get application usecase-connectivity-link -n openshift-gitops -w
 
-# Check all Jobs
-oc get job -n openshift-gitops | grep -E "aws-credentials|globex-ns-delegation|gateway-prod-web|echo-api-httproute|globex-env"
+# Check all Jobs (PostSync hooks)
+oc get job -n openshift-gitops | grep -E "force-realm|aws-credentials|globex-ns-delegation|gateway-prod-web|echo-api-httproute|productcatalog-httproute|globex-env"
+
+# Check CronJob status
+oc get cronjob patch-monitor -n openshift-gitops
+
+# View recent CronJob executions
+oc get jobs -n openshift-gitops -l app.kubernetes.io/name=patch-monitor --sort-by=.metadata.creationTimestamp
 
 # View Job logs
+oc logs -n openshift-gitops job/force-realm-reimport
 oc logs -n openshift-gitops job/aws-credentials-setup
 oc logs -n openshift-gitops job/globex-ns-delegation
 oc logs -n openshift-gitops job/gateway-prod-web-setup
 oc logs -n openshift-gitops job/echo-api-httproute-setup
+oc logs -n openshift-gitops job/productcatalog-httproute-setup
 oc logs -n openshift-gitops job/globex-env-setup
+
+# View CronJob logs (last run)
+oc logs -n openshift-gitops -l app.kubernetes.io/name=patch-monitor --tail=50
 ```
 
 ### Verify
@@ -194,21 +209,26 @@ Static Resources (Git)
     ├─ HTTPRoute (with placeholder hostname)
     ├─ Deployment + Service (echo-api app)
     ├─ Globex application stack (db, store-app, mobile-gateway, web)
-    └─ Jobs (5)
-        ├─ Job #1: Create AWS credentials Secret
-        ├─ Job #2: Create HostedZone + RecordSet
-        ├─ Job #3: Patch Gateway hostname
-        ├─ Job #4: Patch HTTPRoute hostname
-        └─ Job #5: Patch Globex environment variables
+    ├─ Jobs (7 with PostSync hooks)
+    │   ├─ Job #0 (PreSync): Force Keycloak realm reimport
+    │   ├─ Job #1 (PostSync wave 1): Create AWS credentials Secret
+    │   ├─ Job #2 (PostSync wave 2): Create HostedZone + RecordSet
+    │   ├─ Job #3 (PostSync wave 3): Patch Gateway hostname
+    │   ├─ Job #4 (PostSync wave 3): Patch echo-api HTTPRoute hostname
+    │   ├─ Job #5 (PostSync wave 3): Patch productcatalog HTTPRoute hostname
+    │   └─ Job #6 (PostSync wave 4): Patch Globex environment variables
+    └─ CronJob (safety net)
+        └─ Patch Monitor: Runs every 10 minutes to auto-fix placeholders
 
-Runtime Execution:
-    Job #1 → Creates Secret with AWS credentials (type: kuadrant.io/aws)
-    Job #2 → Creates HostedZone + RecordSet in AWS Route53
-    Job #3 → Patches Gateway: *.globex.placeholder → *.globex.<cluster-domain>
-    Job #4 → Patches HTTPRoute: echo.globex.placeholder → echo.globex.<cluster-domain>
-    Job #5 → Patches Globex deployments with Keycloak URLs using apps domain
+Runtime Execution (via PostSync Hooks):
+    PreSync wave 0: Force realm reimport → Deletes KeycloakRealmImport for fresh import
+    PostSync wave 1: Job #1 → Creates Secret with AWS credentials (type: kuadrant.io/aws)
+    PostSync wave 2: Job #2 → Creates HostedZone + RecordSet in AWS Route53
+    PostSync wave 3: Jobs #3, #4, #5 (parallel) → Patch Gateway & HTTPRoutes
+    PostSync wave 4: Job #6 → Patches Globex deployments with Keycloak URLs
     TLSPolicy → Triggers cert-manager to create Let's Encrypt certificate
     DNSPolicy → Creates CNAME records in Route53 pointing to Gateway Load Balancer
+    CronJob → Monitors resources every 10 minutes, auto-patches any placeholders
 ```
 
 ### Key Components
@@ -361,10 +381,38 @@ Everything else adapts to the cluster automatically.
 
 **File naming**: `<namespace>-<kind>-<name>.yaml` (or `cluster-<kind>-<name>.yaml` for cluster-scoped)
 
-## Jobs
+## Jobs & Automation
 
-### Job #1: AWS Credentials Setup (aws-credentials-setup)
+### PostSync Hook Architecture
 
+**All Jobs use ArgoCD PostSync hooks** for automatic re-execution on every Git commit. When you commit changes to Git:
+1. ArgoCD detects change → Runs full sync
+2. PostSync hooks trigger automatically
+3. Resources patched with correct values
+4. **No manual intervention needed!**
+
+Jobs execute in order via sync waves:
+- **PreSync wave 0**: Job #0 (realm reimport)
+- **PostSync wave 1**: Job #1 (AWS credentials)
+- **PostSync wave 2**: Job #2 (DNS delegation)
+- **PostSync wave 3**: Jobs #3, #4, #5 (parallel - Gateway & HTTPRoutes)
+- **PostSync wave 4**: Job #6 (Globex environment variables)
+
+### Job #0: Force Realm Reimport (force-realm-reimport) - PreSync
+
+**Hook**: PreSync (wave 0)
+**Duration**: ~10 seconds
+
+**Purpose**: Workaround for Keycloak Operator limitation (doesn't update existing realms)
+
+**Steps**:
+1. Delete existing KeycloakRealmImport CR if it exists
+2. Wait for deletion to complete
+3. ArgoCD will recreate with fresh configuration
+
+### Job #1: AWS Credentials Setup (aws-credentials-setup) - PostSync Wave 1
+
+**Hook**: PostSync (wave 1)
 **Duration**: ~5 seconds
 
 **Steps**:
@@ -381,8 +429,9 @@ Everything else adapts to the cluster automatically.
 - The `aws-credentials` Secret type MUST be `kuadrant.io/aws` for Kuadrant to detect the AWS Route53 provider
 - The `aws-acme` Secret is used by cert-manager ClusterIssuer to create TXT records for wildcard certificate validation
 
-### Job #2: DNS Setup (globex-ns-delegation)
+### Job #2: DNS Setup (globex-ns-delegation) - PostSync Wave 2
 
+**Hook**: PostSync (wave 2)
 **Duration**: ~45 seconds
 
 **Steps**:
@@ -397,8 +446,9 @@ Everything else adapts to the cluster automatically.
 - HostedZone `globex` in `ack-system` namespace
 - RecordSet `globex-ns-delegation` in `ack-system` namespace
 
-### Job #3: Gateway Patch (gateway-prod-web-setup)
+### Job #3: Gateway Patch (gateway-prod-web-setup) - PostSync Wave 3
 
+**Hook**: PostSync (wave 3 - runs in parallel with Jobs #4 and #5)
 **Duration**: ~5 seconds
 
 **Steps**:
@@ -407,8 +457,9 @@ Everything else adapts to the cluster automatically.
 
 **Patches**: Gateway `prod-web` in `ingress-gateway` namespace
 
-### Job #4: HTTPRoute Patch (echo-api-httproute-setup)
+### Job #4: Echo-API HTTPRoute Patch (echo-api-httproute-setup) - PostSync Wave 3
 
+**Hook**: PostSync (wave 3 - runs in parallel with Jobs #3 and #5)
 **Duration**: ~5 seconds
 
 **Steps**:
@@ -417,23 +468,60 @@ Everything else adapts to the cluster automatically.
 
 **Patches**: HTTPRoute `echo-api` in `echo-api` namespace
 
-### Job #5: Globex Environment Variables Setup (globex-env-setup)
+### Job #5: ProductCatalog HTTPRoute Patch (productcatalog-httproute-setup) - PostSync Wave 3
 
+**Hook**: PostSync (wave 3 - runs in parallel with Jobs #3 and #4)
+**Duration**: ~5 seconds
+
+**Steps**:
+1. Get cluster domain
+2. Patch HTTPRoute hostname from placeholder to `catalog.globex.<cluster-domain>`
+
+**Patches**: HTTPRoute `productcatalog` in `ingress-gateway` namespace
+
+### Job #6: Globex Environment Variables Setup (globex-env-setup) - PostSync Wave 4
+
+**Hook**: PostSync (wave 4)
 **Duration**: ~5 seconds
 
 **Steps**:
 1. Get OpenShift apps domain
 2. Construct Keycloak SSO URLs
-3. Patch globex-web Deployment environment variables (initContainer + main container)
+3. Patch globex-mobile Deployment environment variables (initContainer + main container)
 4. Patch globex-mobile-gateway Deployment environment variables
 
 **Patches**:
-- Deployment `globex-web` in `globex` namespace (SSO_AUTHORITY, SSO_REDIRECT_LOGOUT_URI)
-- Deployment `globex-mobile-gateway` in `globex` namespace (KEYCLOAK_AUTH_SERVER_URL)
+- Deployment `globex-mobile` in `globex-apim-user1` namespace (SSO_AUTHORITY, SSO_REDIRECT_LOGOUT_URI)
+- Deployment `globex-mobile-gateway` in `globex-apim-user1` namespace (KEYCLOAK_AUTH_SERVER_URL)
 
 **Important**:
-- Patches both initContainer and main container env vars for globex-web
+- Patches both initContainer and main container env vars for globex-mobile
 - ArgoCD ignoreDifferences configured to prevent drift detection
+
+### CronJob: Patch Monitor (Safety Net)
+
+**Schedule**: Every 10 minutes (`*/10 * * * *`)
+**Duration**: ~6 seconds per run
+
+**Purpose**: Safety net for edge cases where PostSync hooks don't run (e.g., manual resource deletion with ArgoCD selfHeal)
+
+**Monitors**:
+- Gateway `prod-web` hostname
+- HTTPRoute `echo-api` hostname
+- HTTPRoute `productcatalog` hostname
+- Deployment `globex-mobile` environment variables
+- Deployment `globex-mobile-gateway` environment variables
+
+**Action**:
+- If placeholder detected → Automatically patches to correct value
+- If all resources OK → Silent (no action)
+
+**Why needed**: PostSync hooks only run during full ArgoCD sync operations. If a resource is manually deleted, ArgoCD's selfHeal recreates it using "partial sync" which doesn't trigger hooks. The CronJob catches these edge cases automatically.
+
+**View logs**:
+```bash
+oc logs -n openshift-gitops -l app.kubernetes.io/name=patch-monitor --tail=50
+```
 
 ## Troubleshooting
 
