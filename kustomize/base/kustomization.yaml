@@ -26,6 +26,9 @@ resources:
   - globex-service-globex-db.yaml
   - globex-serviceaccount-globex-db.yaml
 
+  # ReferenceGrant (allow ingress-gateway to access globex services)
+  - globex-referencegrant-allow-ingress-gateway.yaml
+
   # Application components
   - globex-deployment-globex-mobile-gateway.yaml
   - globex-deployment-globex-store-app.yaml
