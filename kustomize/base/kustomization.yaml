@@ -20,21 +20,73 @@ resources:
   - echo-api-service-echo-api.yaml
 
   # globex namespace resources
+  # Database secrets
+  - globex-secret-catalog-db.yaml
+  - globex-secret-customer-db.yaml
+  - globex-secret-globex-db.yaml
+  - globex-secret-inventory-db.yaml
+  - globex-secret-order-db.yaml
+
+  # Database deployments
+  - globex-deployment-catalog-db.yaml
+  - globex-deployment-customer-db.yaml
   - globex-deployment-globex-db.yaml
+  - globex-deployment-inventory-db.yaml
+  - globex-deployment-order-db.yaml
+
+  # Database services
+  - globex-service-catalog-db.yaml
+  - globex-service-customer-db.yaml
+  - globex-service-globex-db.yaml
+  - globex-service-inventory-db.yaml
+  - globex-service-order-db.yaml
+
+  # Database service accounts
+  - globex-serviceaccount-catalog-db.yaml
+  - globex-serviceaccount-customer-db.yaml
+  - globex-serviceaccount-globex-db.yaml
+  - globex-serviceaccount-inventory-db.yaml
+  - globex-serviceaccount-order-db.yaml
+
+  # Application deployments
+  - globex-deployment-activity-tracking.yaml
+  - globex-deployment-cart-service.yaml
+  - globex-deployment-catalog-service.yaml
+  - globex-deployment-customer-service.yaml
   - globex-deployment-globex-mobile-gateway.yaml
   - globex-deployment-globex-store-app.yaml
   - globex-deployment-globex-web.yaml
-  - globex-route-globex-mobile-gateway.yaml
-  - globex-route-globex-web.yaml
-  - globex-secret-globex-db.yaml
-  - globex-service-globex-db.yaml
+  - globex-deployment-inventory-service.yaml
+  - globex-deployment-order-service.yaml
+  - globex-deployment-recommendation-engine.yaml
+
+  # Application services
+  - globex-service-activity-tracking.yaml
+  - globex-service-cart-service.yaml
+  - globex-service-catalog-service.yaml
+  - globex-service-customer-service.yaml
   - globex-service-globex-mobile-gateway.yaml
   - globex-service-globex-store-app.yaml
   - globex-service-globex-web.yaml
-  - globex-serviceaccount-globex-db.yaml
+  - globex-service-inventory-service.yaml
+  - globex-service-order-service.yaml
+  - globex-service-recommendation-engine.yaml
+
+  # Application service accounts
+  - globex-serviceaccount-activity-tracking.yaml
+  - globex-serviceaccount-cart-service.yaml
+  - globex-serviceaccount-catalog-service.yaml
+  - globex-serviceaccount-customer-service.yaml
   - globex-serviceaccount-globex-mobile-gateway.yaml
   - globex-serviceaccount-globex-store-app.yaml
   - globex-serviceaccount-globex-web.yaml
+  - globex-serviceaccount-inventory-service.yaml
+  - globex-serviceaccount-order-service.yaml
+  - globex-serviceaccount-recommendation-engine.yaml
+
+  # Routes
+  - globex-route-globex-mobile-gateway.yaml
+  - globex-route-globex-web.yaml
 
   # keycloak namespace resources (Keycloak realm import)
   - keycloak-keycloakrealmimport-globex-user1.yaml
