@@ -71,7 +71,7 @@ spec:
                   echo ""
 
                   # Check globex-mobile-gateway HTTPRoute
-                  echo "[3/4] Checking globex-mobile-gateway HTTPRoute hostname..."
+                  echo "[3/5] Checking globex-mobile-gateway HTTPRoute hostname..."
                   MOBILE_GW_HOSTNAME=$(oc get httproute globex-mobile-gateway -n globex-apim-user1 -o jsonpath='{.spec.hostnames[0]}' 2>/dev/null || echo "")
                   if [[ "$MOBILE_GW_HOSTNAME" == *"placeholder"* ]]; then
                     echo "  ⚠️  HTTPRoute has placeholder: $MOBILE_GW_HOSTNAME"
@@ -86,8 +86,26 @@ spec:
                   fi
                   echo ""
 
+                  # Check globex-mobile-gateway AuthPolicy
+                  echo "[4/5] Checking globex-mobile-gateway AuthPolicy issuerUrl..."
+                  ISSUER_URL=$(oc get authpolicy globex-mobile-gateway -n globex-apim-user1 -o jsonpath='{.spec.rules.authentication.keycloak-users.jwt.issuerUrl}' 2>/dev/null || echo "")
+                  if [[ "$ISSUER_URL" == *"placeholder"* ]]; then
+                    echo "  ⚠️  AuthPolicy has placeholder: $ISSUER_URL"
+                    APPS_DOMAIN=$(oc get ingresscontroller default -n openshift-ingress-operator -o jsonpath='{.status.domain}')
+                    ISSUER_URL_FIXED="https://keycloak-keycloak.${APPS_DOMAIN}/realms/globex-user1"
+                    echo "  → Patching to: ${ISSUER_URL_FIXED}"
+                    oc patch authpolicy globex-mobile-gateway -n globex-apim-user1 --type=json -p="[
+                      {\"op\": \"replace\", \"path\": \"/spec/rules/authentication/keycloak-users/jwt/issuerUrl\", \"value\": \"${ISSUER_URL_FIXED}\"}
+                    ]"
+                    echo "  ✅ AuthPolicy patched"
+                    NEEDS_PATCH=1
+                  else
+                    echo "  ✓ AuthPolicy OK: $ISSUER_URL"
+                  fi
+                  echo ""
+
                   # Check globex-mobile deployment
-                  echo "[4/4] Checking globex-mobile deployment env vars..."
+                  echo "[5/5] Checking globex-mobile deployment env vars..."
                   SSO_AUTHORITY=$(oc get deployment globex-mobile -n globex-apim-user1 -o jsonpath='{.spec.template.spec.containers[0].env[?(@.name=="SSO_AUTHORITY")].value}' 2>/dev/null || echo "")
                   MOBILE_GATEWAY=$(oc get deployment globex-mobile -n globex-apim-user1 -o jsonpath='{.spec.template.spec.containers[0].env[?(@.name=="GLOBEX_MOBILE_GATEWAY")].value}' 2>/dev/null || echo "")
                   if [[ "$SSO_AUTHORITY" == *"placeholder"* ]] || [[ "$MOBILE_GATEWAY" == *"placeholder"* ]]; then

@@ -32,6 +32,12 @@ spec:
       namespace: globex-apim-user1
       jsonPointers:
         - /spec/hostnames
+    - group: kuadrant.io
+      kind: AuthPolicy
+      name: globex-mobile-gateway
+      namespace: globex-apim-user1
+      jsonPointers:
+        - /spec/rules/authentication/keycloak-users/jwt/issuerUrl
     - group: apps
       kind: Deployment
       name: globex-mobile

@@ -44,8 +44,9 @@ resources:
   - globex-apim-user1-route-globex-mobile-gateway.yaml
   - globex-apim-user1-route-globex-mobile.yaml
 
-  # Mobile Gateway service exposure (HTTPRoute)
+  # Mobile Gateway service exposure (HTTPRoute and AuthPolicy)
   - globex-apim-user1-httproute-globex-mobile-gateway.yaml
+  - globex-apim-user1-authpolicy-globex-mobile-gateway.yaml
 
   # keycloak namespace resources (Keycloak realm import)
   - keycloak-keycloakrealmimport-globex-user1.yaml
@@ -63,6 +64,7 @@ resources:
   - openshift-gitops-job-gateway-prod-web.yaml
   - openshift-gitops-job-globex-env.yaml
   - openshift-gitops-job-globex-mobile-gateway-httproute.yaml
+  - openshift-gitops-job-globex-mobile-gateway-authpolicy.yaml
   - openshift-gitops-job-globex-ns-delegation.yaml
   - openshift-gitops-job-force-realm-reimport.yaml
   - openshift-gitops-cronjob-patch-monitor.yaml
