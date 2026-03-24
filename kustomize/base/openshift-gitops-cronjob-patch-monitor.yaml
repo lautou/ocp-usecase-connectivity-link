@@ -73,15 +73,18 @@ spec:
                   # Check globex-mobile deployment
                   echo "[3/3] Checking globex-mobile deployment env vars..."
                   SSO_AUTHORITY=$(oc get deployment globex-mobile -n globex-apim-user1 -o jsonpath='{.spec.template.spec.containers[0].env[?(@.name=="SSO_AUTHORITY")].value}' 2>/dev/null || echo "")
-                  if [[ "$SSO_AUTHORITY" == *"placeholder"* ]]; then
-                    echo "  ⚠️  Deployment has placeholder in SSO_AUTHORITY"
+                  MOBILE_GATEWAY=$(oc get deployment globex-mobile -n globex-apim-user1 -o jsonpath='{.spec.template.spec.containers[0].env[?(@.name=="GLOBEX_MOBILE_GATEWAY")].value}' 2>/dev/null || echo "")
+                  if [[ "$SSO_AUTHORITY" == *"placeholder"* ]] || [[ "$MOBILE_GATEWAY" == *"placeholder"* ]]; then
+                    echo "  ⚠️  Deployment has placeholder values"
                     echo "  → Running globex-env patching..."
 
                     KEYCLOAK_URL="https://keycloak-keycloak.apps.${BASE_DOMAIN}/realms/globex-user1"
                     LOGOUT_URI="https://globex-mobile-globex-apim-user1.apps.${BASE_DOMAIN}/home"
+                    MOBILE_GATEWAY_URL="https://globex-mobile.globex.${BASE_DOMAIN}"
 
                     oc patch deployment globex-mobile -n globex-apim-user1 --type=json -p="[
                       {\"op\": \"replace\", \"path\": \"/spec/template/spec/initContainers/0/env/0/value\", \"value\": \"${KEYCLOAK_URL}\"},
+                      {\"op\": \"replace\", \"path\": \"/spec/template/spec/containers/0/env/8/value\", \"value\": \"${MOBILE_GATEWAY_URL}\"},
                       {\"op\": \"replace\", \"path\": \"/spec/template/spec/containers/0/env/9/value\", \"value\": \"${KEYCLOAK_URL}\"},
                       {\"op\": \"replace\", \"path\": \"/spec/template/spec/containers/0/env/10/value\", \"value\": \"${LOGOUT_URI}\"}
                     ]"
@@ -93,7 +96,7 @@ spec:
                     echo "  ✅ Deployments patched"
                     NEEDS_PATCH=1
                   else
-                    echo "  ✓ Deployment OK"
+                    echo "  ✓ Deployments OK"
                   fi
                   echo ""
 
