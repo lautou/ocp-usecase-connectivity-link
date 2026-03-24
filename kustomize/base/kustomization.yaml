@@ -9,7 +9,7 @@ resources:
 
   # Namespaces
   - cluster-ns-echo-api.yaml
-  - cluster-ns-globex.yaml
+  - cluster-ns-globex-apim-user1.yaml
   - cluster-ns-ingress-gateway.yaml
 
   # echo-api namespace resources
@@ -19,30 +19,30 @@ resources:
   - echo-api-ratelimitpolicy-echo-api-rlp.yaml
   - echo-api-service-echo-api.yaml
 
-  # globex namespace resources (monolith architecture)
+  # globex-apim-user1 namespace resources (monolith architecture)
   # Database
-  - globex-secret-globex-db.yaml
-  - globex-deployment-globex-db.yaml
-  - globex-service-globex-db.yaml
-  - globex-serviceaccount-globex-db.yaml
+  - globex-apim-user1-secret-globex-db.yaml
+  - globex-apim-user1-deployment-globex-db.yaml
+  - globex-apim-user1-service-globex-db.yaml
+  - globex-apim-user1-serviceaccount-globex-db.yaml
 
-  # ReferenceGrant (allow ingress-gateway to access globex services)
-  - globex-referencegrant-allow-ingress-gateway.yaml
+  # ReferenceGrant (allow ingress-gateway to access globex-apim-user1 services)
+  - globex-apim-user1-referencegrant-allow-ingress-gateway.yaml
 
   # Application components
-  - globex-deployment-globex-mobile-gateway.yaml
-  - globex-deployment-globex-store-app.yaml
-  - globex-deployment-globex-web.yaml
-  - globex-service-globex-mobile-gateway.yaml
-  - globex-service-globex-store-app.yaml
-  - globex-service-globex-web.yaml
-  - globex-serviceaccount-globex-mobile-gateway.yaml
-  - globex-serviceaccount-globex-store-app.yaml
-  - globex-serviceaccount-globex-web.yaml
+  - globex-apim-user1-deployment-globex-mobile-gateway.yaml
+  - globex-apim-user1-deployment-globex-store-app.yaml
+  - globex-apim-user1-deployment-globex-mobile.yaml
+  - globex-apim-user1-service-globex-mobile-gateway.yaml
+  - globex-apim-user1-service-globex-store-app.yaml
+  - globex-apim-user1-service-globex-mobile.yaml
+  - globex-apim-user1-serviceaccount-globex-mobile-gateway.yaml
+  - globex-apim-user1-serviceaccount-globex-store-app.yaml
+  - globex-apim-user1-serviceaccount-globex-mobile.yaml
 
   # Routes
-  - globex-route-globex-mobile-gateway.yaml
-  - globex-route-globex-web.yaml
+  - globex-apim-user1-route-globex-mobile-gateway.yaml
+  - globex-apim-user1-route-globex-mobile.yaml
 
   # keycloak namespace resources (Keycloak realm import)
   - keycloak-keycloakrealmimport-globex-user1.yaml

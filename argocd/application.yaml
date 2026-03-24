@@ -34,8 +34,8 @@ spec:
         - /spec/hostnames
     - group: apps
       kind: Deployment
-      name: globex-web
-      namespace: globex
+      name: globex-mobile
+      namespace: globex-apim-user1
       jsonPointers:
         - /spec/template/spec/initContainers/0/env/0/value
         - /spec/template/spec/containers/0/env/8/value
@@ -43,7 +43,7 @@ spec:
     - group: apps
       kind: Deployment
       name: globex-mobile-gateway
-      namespace: globex
+      namespace: globex-apim-user1
       jsonPointers:
         - /spec/template/spec/containers/0/env/1/value
   syncPolicy:

@@ -1,47 +1,34 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: globex-store-app
-  namespace: globex
+  name: globex-mobile-gateway
+  namespace: globex-apim-user1
   labels:
-    app.kubernetes.io/name: globex-store-app
+    app.kubernetes.io/name: globex-mobile-gateway
     app.kubernetes.io/instance: globex-user1
     app.kubernetes.io/version: "latest"
 spec:
   selector:
     matchLabels:
-      app.kubernetes.io/name: globex-store-app
+      app.kubernetes.io/name: globex-mobile-gateway
       app.kubernetes.io/instance: globex-user1
   template:
     metadata:
       labels:
-        app.kubernetes.io/name: globex-store-app
+        app.kubernetes.io/name: globex-mobile-gateway
         app.kubernetes.io/instance: globex-user1
     spec:
-      serviceAccountName: globex-store-app
+      serviceAccountName: globex-mobile-gateway
       containers:
-        - name: globex-store-app
-          image: quay.io/laurenttourreau/globex-store:npe-fixed
+        - name: globex-mobile-gateway
+          image: quay.io/cloud-architecture-workshop/globex-mobile-gateway:latest
           ports:
             - containerPort: 8080
           env:
-            - name: QUARKUS_DATASOURCE_USERNAME
-              valueFrom:
-                secretKeyRef:
-                  name: globex-db
-                  key: database-user
-            - name: QUARKUS_DATASOURCE_PASSWORD
-              valueFrom:
-                secretKeyRef:
-                  name: globex-db
-                  key: database-password
-            - name: POSTGRESQL_DATABASE
-              valueFrom:
-                secretKeyRef:
-                  name: globex-db
-                  key: database-name
-            - name: QUARKUS_DATASOURCE_JDBC_URL
-              value: "jdbc:postgresql://globex-db:5432/${POSTGRESQL_DATABASE}"
+            - name: GLOBEX_STORE_API_URL
+              value: "http://globex-store-app:8080"
+            - name: KEYCLOAK_AUTH_SERVER_URL
+              value: "https://keycloak-keycloak.placeholder/realms/globex-user1"
           livenessProbe:
             httpGet:
               path: /q/health/live
@@ -60,7 +47,7 @@ spec:
             failureThreshold: 3
           resources:
             limits:
-              cpu: 200m
+              cpu: 250m
               memory: 250Mi
             requests:
               cpu: 100m

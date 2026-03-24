@@ -19,5 +19,5 @@ spec:
             value: /services/catalog
       backendRefs:
         - name: globex-store-app
-          namespace: globex
+          namespace: globex-apim-user1
           port: 8080

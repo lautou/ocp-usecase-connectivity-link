@@ -2,7 +2,7 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: globex-db
-  namespace: globex
+  namespace: globex-apim-user1
   labels:
     app.kubernetes.io/name: globex-db
     app.kubernetes.io/instance: globex-user1
