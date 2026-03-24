@@ -71,7 +71,7 @@ spec:
               value: "http://globex-store-app:8080/services/order"
             - name: API_CLIENT_ID
               value: "globex-mobile"
-            - name: API_MOBILE_GATEWAY
+            - name: GLOBEX_MOBILE_GATEWAY
               value: "http://globex-mobile-gateway:8080"
             - name: SSO_AUTHORITY
               value: "https://keycloak-keycloak.placeholder/realms/globex-user1"
