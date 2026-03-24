@@ -35,19 +35,45 @@ responseType: 'code'  // ✅ Authorization Code Flow (PKCE automatic)
 
 **2. Keycloak Client Configuration**:
 ```yaml
-clientId: globex-mobile-gateway
+clientId: globex-mobile
 publicClient: true
 clientAuthenticatorType: "none"  # ← CRITICAL for public clients
 standardFlowEnabled: true
-implicitFlowEnabled: false
+implicitFlowEnabled: true  # ← BOTH flows enabled for compatibility
 attributes:
   pkce.code.challenge.method: "S256"  # Enforce PKCE with SHA-256
 ```
 
+**Why Both Flows Are Enabled:**
+- `standardFlowEnabled: true` - Required for server-side session creation in Keycloak
+- `implicitFlowEnabled: true` - Required for the JavaScript client library compatibility
+- Without BOTH enabled, Keycloak returns HTTP 401 on `/userinfo` endpoint
+- This is a transitional configuration while the client uses angular-auth-oidc-client
+
 **3. Container Image**:
 - Built custom image: `quay.io/laurenttourreau/globex-mobile:rhbk26-authcode-flow-v2`
 - Source: [rh-cloud-architecture-workshop/globex-mobile](https://github.com/rh-cloud-architecture-workshop/globex-mobile)
-- Changes: Modified `src/app/auth-config.module.ts` to use Authorization Code Flow
+- Changes: Modified `src/app/auth-config.module.ts` line 31
+- Repository: https://quay.io/repository/laurenttourreau/globex-mobile (public)
+
+**Building the Custom Image**:
+```bash
+# Clone source
+cd /tmp
+git clone https://github.com/rh-cloud-architecture-workshop/globex-mobile.git
+cd globex-mobile
+
+# Modify auth-config.module.ts
+# Change line 31 from:  responseType: 'id_token token'
+# To:                    responseType: 'code'
+
+# Build and push
+podman build -t quay.io/laurenttourreau/globex-mobile:rhbk26-authcode-flow-v2 .
+podman login quay.io
+podman push quay.io/laurenttourreau/globex-mobile:rhbk26-authcode-flow-v2
+```
+
+**Build time**: ~5-10 minutes (Angular compilation + multi-stage Docker build)
 
 ### Critical Discovery: Keycloak Client Authenticator Type
 
@@ -97,9 +123,15 @@ If the automated Job fails or you need to update manually:
 ### Current Configuration
 
 - **RHBK Version**: 26.4.10.redhat-00001
-- **globex-mobile Image**: `quay.io/laurenttourreau/globex-mobile:rhbk26-authcode-flow-v2`
+- **globex-mobile Image**: `quay.io/laurenttourreau/globex-mobile:rhbk26-authcode-flow-v2` (custom build)
 - **OAuth Flow**: Authorization Code Flow with PKCE (S256)
 - **Keycloak Client**: Public client with `clientAuthenticatorType: "none"`
+- **Both OAuth Flows Enabled**: `standardFlowEnabled: true` AND `implicitFlowEnabled: true`
+- **Environment Variables**:
+  - `API_CLIENT_ID`: "globex-mobile"
+  - `API_MOBILE_GATEWAY`: "http://globex-mobile-gateway:8080"
+  - `SSO_AUTHORITY`: Patched at runtime by Job to actual cluster domain
+  - `SSO_REDIRECT_LOGOUT_URI`: Patched at runtime by Job to actual cluster domain
 
 ### References
 
