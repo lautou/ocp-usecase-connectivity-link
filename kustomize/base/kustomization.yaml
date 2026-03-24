@@ -52,3 +52,4 @@ resources:
   - openshift-gitops-job-gateway-prod-web.yaml
   - openshift-gitops-job-globex-env.yaml
   - openshift-gitops-job-globex-ns-delegation.yaml
+  - openshift-gitops-job-force-realm-reimport.yaml

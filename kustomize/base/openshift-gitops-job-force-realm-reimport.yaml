@@ -1,0 +1,44 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: force-realm-reimport
+  namespace: openshift-gitops
+  labels:
+    app.kubernetes.io/name: realm-reimport-job
+    app.kubernetes.io/part-of: connectivity-link
+  annotations:
+    argocd.argoproj.io/hook: PreSync
+    argocd.argoproj.io/hook-delete-policy: BeforeHookCreation
+    argocd.argoproj.io/sync-wave: "0"
+spec:
+  ttlSecondsAfterFinished: 300
+  template:
+    metadata:
+      name: force-realm-reimport
+    spec:
+      serviceAccountName: openshift-gitops-argocd-application-controller
+      restartPolicy: Never
+      containers:
+        - name: reimport
+          image: registry.redhat.io/openshift4/ose-cli:latest
+          command:
+            - /bin/bash
+            - -c
+            - |
+              set -e
+              echo "Forcing realm reimport by deleting and recreating KeycloakRealmImport..."
+
+              # Check if KeycloakRealmImport exists
+              if oc get keycloakrealmimport globex-user1 -n keycloak 2>/dev/null; then
+                echo "KeycloakRealmImport exists, deleting it..."
+                oc delete keycloakrealmimport globex-user1 -n keycloak --ignore-not-found=true
+
+                echo "Waiting for deletion to complete..."
+                sleep 5
+
+                echo "KeycloakRealmImport deleted successfully"
+              else
+                echo "KeycloakRealmImport doesn't exist, will be created by ArgoCD"
+              fi
+
+              echo "✓ Realm reimport preparation complete"

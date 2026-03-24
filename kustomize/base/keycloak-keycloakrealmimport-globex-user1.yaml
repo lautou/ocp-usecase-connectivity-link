@@ -20,6 +20,7 @@ metadata:
     app: keycloak
   annotations:
     argocd.argoproj.io/sync-options: SkipDryRunOnMissingResource=true
+    argocd.argoproj.io/sync-wave: "1"  # Import realm before other resources
 spec:
   keycloakCRName: keycloak
   realm:
