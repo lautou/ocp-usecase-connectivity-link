@@ -1,0 +1,53 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: productcatalog-httproute-setup
+  namespace: openshift-gitops
+  labels:
+    app.kubernetes.io/name: productcatalog-httproute-setup
+    app.kubernetes.io/part-of: connectivity-link
+  annotations:
+    argocd.argoproj.io/sync-options: Force=true
+spec:
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: productcatalog-httproute-setup
+    spec:
+      serviceAccountName: openshift-gitops-argocd-application-controller
+      restartPolicy: Never
+      containers:
+        - name: patch-httproute
+          image: registry.redhat.io/openshift4/ose-cli:latest
+          command:
+            - /bin/bash
+            - -c
+            - |
+              set -e
+
+              echo "=========================================="
+              echo "ProductCatalog HTTPRoute Setup"
+              echo "=========================================="
+              echo ""
+
+              # Get cluster domain
+              echo "[1/2] Getting OpenShift cluster domain..."
+              BASE_DOMAIN=$(oc get dns cluster -o jsonpath='{.spec.baseDomain}')
+              echo "✓ Cluster base domain: ${BASE_DOMAIN}"
+              echo ""
+
+              # Patch HTTPRoute hostname
+              echo "[2/2] Patching HTTPRoute hostname..."
+              HOSTNAME="catalog.globex.${BASE_DOMAIN}"
+              oc patch httproute productcatalog -n ingress-gateway --type=json -p="[
+                {\"op\": \"replace\", \"path\": \"/spec/hostnames/0\", \"value\": \"${HOSTNAME}\"}
+              ]"
+              echo "✓ HTTPRoute hostname set to: ${HOSTNAME}"
+              echo ""
+
+              echo "=========================================="
+              echo "✅ ProductCatalog HTTPRoute configured!"
+              echo "=========================================="
+              echo ""
+              echo "📋 Access ProductCatalog at:"
+              echo "  https://${HOSTNAME}/services/catalog/product"

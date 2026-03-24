@@ -51,10 +51,16 @@ resources:
   - ingress-gateway-ratelimitpolicy-prod-web.yaml
   - ingress-gateway-tlspolicy-prod-web.yaml
 
+  # ingress-gateway namespace resources (ProductCatalog service exposure)
+  - ingress-gateway-httproute-productcatalog.yaml
+  - ingress-gateway-authpolicy-productcatalog.yaml
+  - ingress-gateway-ratelimitpolicy-productcatalog.yaml
+
   # openshift-gitops namespace resources (Jobs for dynamic configuration)
   - openshift-gitops-job-aws-credentials.yaml
   - openshift-gitops-job-echo-api-httproute.yaml
   - openshift-gitops-job-gateway-prod-web.yaml
   - openshift-gitops-job-globex-env.yaml
   - openshift-gitops-job-globex-ns-delegation.yaml
+  - openshift-gitops-job-productcatalog-httproute.yaml
   - openshift-gitops-job-force-realm-reimport.yaml

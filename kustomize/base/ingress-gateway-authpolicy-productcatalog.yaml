@@ -1,0 +1,18 @@
+apiVersion: kuadrant.io/v1
+kind: AuthPolicy
+metadata:
+  name: productcatalog
+  namespace: ingress-gateway
+  labels:
+    app.kubernetes.io/name: productcatalog
+    app.kubernetes.io/part-of: connectivity-link
+spec:
+  targetRef:
+    group: gateway.networking.k8s.io
+    kind: HTTPRoute
+    name: productcatalog
+  rules:
+    authorization:
+      allow-all:
+        opa:
+          rego: "allow = true"

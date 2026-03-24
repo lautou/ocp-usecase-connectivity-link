@@ -22,6 +22,14 @@ spec:
         - /spec/listeners/0/hostname
     - group: gateway.networking.k8s.io
       kind: HTTPRoute
+      name: echo-api
+      namespace: echo-api
+      jsonPointers:
+        - /spec/hostnames
+    - group: gateway.networking.k8s.io
+      kind: HTTPRoute
+      name: productcatalog
+      namespace: ingress-gateway
       jsonPointers:
         - /spec/hostnames
     - group: apps
