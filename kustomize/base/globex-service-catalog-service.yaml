@@ -12,3 +12,4 @@ spec:
     app.kubernetes.io/instance: globex-user1
   ports:
     - port: 8080
+      targetPort: 8081
