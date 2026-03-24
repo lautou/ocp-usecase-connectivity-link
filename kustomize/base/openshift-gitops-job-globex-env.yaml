@@ -45,19 +45,16 @@ spec:
               echo "[2/5] Constructing URLs..."
               KEYCLOAK_URL="https://keycloak-keycloak.${APPS_DOMAIN}/realms/globex-user1"
               LOGOUT_URI="https://globex-mobile-globex-apim-user1.${APPS_DOMAIN}/home"
-              MOBILE_GATEWAY_URL="https://globex-mobile.globex.${BASE_DOMAIN}"
               echo "✓ Keycloak SSO Authority: ${KEYCLOAK_URL}"
               echo "✓ Logout redirect URI: ${LOGOUT_URI}"
-              echo "✓ Mobile Gateway URL: ${MOBILE_GATEWAY_URL}"
               echo ""
 
               # Check if configuration is already up-to-date (skip unnecessary work)
               echo "[3/5] Checking if configuration is already current..."
               CURRENT_SSO_AUTHORITY=$(oc get deployment globex-mobile -n globex-apim-user1 -o jsonpath='{.spec.template.spec.containers[0].env[?(@.name=="SSO_AUTHORITY")].value}' 2>/dev/null || echo "")
               CURRENT_LOGOUT_URI=$(oc get deployment globex-mobile -n globex-apim-user1 -o jsonpath='{.spec.template.spec.containers[0].env[?(@.name=="SSO_REDIRECT_LOGOUT_URI")].value}' 2>/dev/null || echo "")
-              CURRENT_MOBILE_GATEWAY=$(oc get deployment globex-mobile -n globex-apim-user1 -o jsonpath='{.spec.template.spec.containers[0].env[?(@.name=="GLOBEX_MOBILE_GATEWAY")].value}' 2>/dev/null || echo "")
 
-              if [ "$CURRENT_SSO_AUTHORITY" = "$KEYCLOAK_URL" ] && [ "$CURRENT_LOGOUT_URI" = "$LOGOUT_URI" ] && [ "$CURRENT_MOBILE_GATEWAY" = "$MOBILE_GATEWAY_URL" ]; then
+              if [ "$CURRENT_SSO_AUTHORITY" = "$KEYCLOAK_URL" ] && [ "$CURRENT_LOGOUT_URI" = "$LOGOUT_URI" ]; then
                 echo "✓ Configuration is already up-to-date!"
                 echo ""
                 echo "=========================================="
@@ -72,7 +69,6 @@ spec:
               echo "[4/5] Patching globex-mobile Deployment environment variables..."
               oc patch deployment globex-mobile -n globex-apim-user1 --type=json -p="[
                 {\"op\": \"replace\", \"path\": \"/spec/template/spec/initContainers/0/env/0/value\", \"value\": \"${KEYCLOAK_URL}\"},
-                {\"op\": \"replace\", \"path\": \"/spec/template/spec/containers/0/env/8/value\", \"value\": \"${MOBILE_GATEWAY_URL}\"},
                 {\"op\": \"replace\", \"path\": \"/spec/template/spec/containers/0/env/9/value\", \"value\": \"${KEYCLOAK_URL}\"},
                 {\"op\": \"replace\", \"path\": \"/spec/template/spec/containers/0/env/10/value\", \"value\": \"${LOGOUT_URI}\"}
               ]"
@@ -93,9 +89,8 @@ spec:
               echo ""
               echo "📋 Summary:"
               echo "  Deployments patched:"
-              echo "    - globex-mobile (SSO Authority, Mobile Gateway URL, Logout URI)"
+              echo "    - globex-mobile (SSO Authority, Logout URI)"
               echo "    - globex-mobile-gateway (Keycloak Auth Server)"
               echo "  Namespace: globex-apim-user1"
               echo "  Keycloak URL: ${KEYCLOAK_URL}"
-              echo "  Mobile Gateway URL: ${MOBILE_GATEWAY_URL}"
               echo "  Logout URI: ${LOGOUT_URI}"

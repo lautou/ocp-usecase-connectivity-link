@@ -44,7 +44,6 @@ spec:
       namespace: globex-apim-user1
       jsonPointers:
         - /spec/template/spec/initContainers/0/env/0/value
-        - /spec/template/spec/containers/0/env/8/value
         - /spec/template/spec/containers/0/env/9/value
         - /spec/template/spec/containers/0/env/10/value
     - group: apps
