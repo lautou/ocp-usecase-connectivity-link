@@ -27,6 +27,8 @@ spec:
           env:
             - name: SPRING_DATASOURCE_URL
               value: jdbc:postgresql://catalog-db:5432/catalog
+            - name: SPRING_DATASOURCE_DRIVER_CLASS_NAME
+              value: org.postgresql.Driver
             - name: SPRING_DATASOURCE_USERNAME
               valueFrom:
                 secretKeyRef:
