@@ -154,7 +154,7 @@ spec:
           - "*"
           - "+"
         standardFlowEnabled: true
-        implicitFlowEnabled: false
+        implicitFlowEnabled: true
         directAccessGrantsEnabled: true
         fullScopeAllowed: true
         attributes:
