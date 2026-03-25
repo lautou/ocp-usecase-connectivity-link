@@ -30,19 +30,19 @@ spec:
               echo "[1/6] Getting cluster domain..."
               BASE_DOMAIN=$(oc get dns cluster -o jsonpath='{.spec.baseDomain}')
 
-              # Extract cluster name (first segment of BASE_DOMAIN)
-              # e.g., myocp.sandbox4993.opentlc.com -> myocp
-              CLUSTER_NAME=$(echo "${BASE_DOMAIN}" | cut -d'.' -f1)
+              # Extract root domain from baseDomain (remove cluster name prefix)
+              # e.g., myocp.sandbox4993.opentlc.com -> sandbox4993.opentlc.com
+              ROOT_DOMAIN=$(echo "${BASE_DOMAIN}" | sed 's/^[^.]*\.//')
 
               SUBDOMAIN_NAME="globex"
-              FULL_DOMAIN="${SUBDOMAIN_NAME}.${BASE_DOMAIN}"
+              FULL_DOMAIN="${SUBDOMAIN_NAME}.${ROOT_DOMAIN}"
 
               # RecordSet name must be relative (not FQDN) to avoid domain duplication
-              # e.g., globex.myocp (not globex.myocp.sandbox4993.opentlc.com)
-              RECORDSET_NAME="${SUBDOMAIN_NAME}.${CLUSTER_NAME}"
+              # Use only subdomain name (e.g., globex, not globex.myocp)
+              RECORDSET_NAME="${SUBDOMAIN_NAME}"
 
               echo "✓ Cluster base domain: ${BASE_DOMAIN}"
-              echo "✓ Cluster name: ${CLUSTER_NAME}"
+              echo "✓ Root domain: ${ROOT_DOMAIN}"
               echo "✓ Full subdomain: ${FULL_DOMAIN}"
               echo "✓ RecordSet name (relative): ${RECORDSET_NAME}"
 
@@ -156,7 +156,7 @@ spec:
               spec:
                 name: ${RECORDSET_NAME}
                 recordType: NS
-                ttl: 300
+                ttl: 3600
                 hostedZoneID: ${PARENT_ZONE_ID}
                 resourceRecords:${RESOURCE_RECORDS}
               EOF
