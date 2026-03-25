@@ -11,7 +11,7 @@ spec:
   source:
     repoURL: https://github.com/lautou/ocp-usecase-connectivity-link.git
     targetRevision: main
-    path: kustomize/overlays/default
+    path: kustomize/overlays/dns-only
   destination:
     server: https://kubernetes.default.svc
     namespace: ack-system
