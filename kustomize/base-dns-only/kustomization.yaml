@@ -1,0 +1,7 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+  - cluster-clusterrole-gateway-manager.yaml
+  - cluster-crb-gateway-manager-openshift-gitops-argocd-application-controller.yaml
+  - openshift-gitops-job-globex-ns-delegation.yaml
