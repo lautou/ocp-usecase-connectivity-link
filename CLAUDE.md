@@ -449,6 +449,83 @@ for i in {1..25}; do curl -sk -w "%{http_code}\n" -o /dev/null "https://${HOSTNA
 - ✅ TLS certificates valid (Let's Encrypt)
 - ✅ DNS resolution working (Route53 CNAME records)
 
+## Ingress Gateway Deployment - Ansible Alignment ✅
+
+**Status**: Successfully deployed ingress-gateway infrastructure matching Red Hat's ansible deployment **100%** (2026-03-25)
+
+### Quick Summary
+
+We validated **two deployment approaches** and achieved **100% resource name alignment**:
+- Red Hat's Ansible/Helm (connectivity-link-ansible repository)
+- Our GitOps/ArgoCD (this repository - `kustomize/overlays/ingress-gateway-only/`)
+
+**Result**: Identical infrastructure with exact same resource names and configuration.
+
+### Resource Names - 100% Match
+
+| Resource | Ansible Name | Our Deployment | Match |
+|----------|--------------|----------------|-------|
+| Gateway hostname | `*.globex.sandbox3491.opentlc.com` | `*.globex.sandbox3491.opentlc.com` | ✅ Exact |
+| TLSPolicy | `prod-web-tls-policy` | `prod-web-tls-policy` | ✅ Exact |
+| RateLimitPolicy | `prod-web-rlp-lowlimits` | `prod-web-rlp-lowlimits` | ✅ Exact |
+| AuthPolicy | `prod-web-deny-all` | `prod-web-deny-all` | ✅ Exact |
+| ClusterIssuer | `prod-web-lets-encrypt-issuer` | `prod-web-lets-encrypt-issuer` | ✅ Exact |
+| AWS Secret | `prod-web-aws-credentials` | `prod-web-aws-credentials` | ✅ Exact |
+| Namespace label | ❌ Manual `oc label` | ✅ In Git manifests | **Better** |
+
+### The ONE Critical Difference
+
+**Namespace Label Management**:
+- Ansible: Label NOT in Helm chart → requires manual `oc label` command
+- Our GitOps: Label IN Git manifests → no manual step required ✅
+
+**Why This Matters**: The label `argocd.argoproj.io/managed-by: openshift-gitops` triggers OpenShift GitOps **automatic RBAC creation**. Without it, deployment fails with Kuadrant RBAC errors.
+
+### Deployment Status
+
+**Gateway**:
+- ✅ Hostname: `*.globex.sandbox3491.opentlc.com` (uses root domain, not cluster domain)
+- ✅ Load Balancer: Ready
+- ✅ Programmed: True
+
+**TLS Certificate**:
+- ✅ Issued by Let's Encrypt
+- ✅ Subject: `*.globex.sandbox3491.opentlc.com`
+- ✅ Valid until: Jun 23, 2026
+- ✅ Status: Ready
+
+**DNS**:
+- ⏳ No DNSPolicy at this stage (matches ansible)
+- Ansible Helm chart does NOT include DNSPolicy
+- DNS records require manual creation or separate deployment
+
+**Policies**:
+- ✅ AuthPolicy: Deny-by-default (HTTP 403)
+- ✅ RateLimitPolicy: 5 requests per 10 seconds
+- ✅ TLSPolicy: Enforced
+
+### Key Learnings
+
+1. **Gateway Hostname Uses Root Domain**:
+   - Ansible: `*.globex.sandbox3491.opentlc.com` (root domain)
+   - NOT: `*.globex.myocp.sandbox3491.opentlc.com` (cluster domain)
+   - Job calculates: `ROOT_DOMAIN=$(echo "${BASE_DOMAIN}" | sed 's/^[^.]*\.//')`
+
+2. **Dedicated ClusterIssuer is Safer**:
+   - Provides isolation, email notifications, independent lifecycle
+   - Better than reusing generic `cluster` ClusterIssuer
+
+3. **Self-Contained Overlays Work Best**:
+   - Kustomize security prevents references outside overlay directory
+   - Solution: Copy all manifests into overlay
+   - Result: Fully portable and reproducible
+
+4. **DNSPolicy is Optional**:
+   - Not included in ansible Helm chart
+   - DNS automation is an enhancement (available in `overlays/default`)
+
+**For complete details**, see [INGRESS_GATEWAY_DEPLOYMENT.md](INGRESS_GATEWAY_DEPLOYMENT.md)
+
 ## Gap Analysis: Our Deployment vs Red Hat's Connectivity Link Demo
 
 **Red Hat Demo URL**: https://www.solutionpatterns.io/soln-pattern-connectivity-link/

@@ -95,3 +95,57 @@ oc get certificate -n ingress-gateway
 # Check AWS Secret
 oc get secret prod-web-aws-credentials -n ingress-gateway -o yaml
 ```
+
+## Deployment Status (Latest)
+
+**Last Verified**: 2026-03-25
+
+**Gateway**:
+- ✅ Hostname: `*.globex.sandbox3491.opentlc.com` (root domain, matches ansible)
+- ✅ Programmed: True
+- ✅ Load Balancer: Ready (`a3eaa314bea1a4ceb9a0b3b2b6481b56-2122933903.eu-central-1.elb.amazonaws.com`)
+
+**TLS Certificate**:
+- ✅ Issued by Let's Encrypt
+- ✅ Subject: `*.globex.sandbox3491.opentlc.com`
+- ✅ Valid until: Jun 23, 2026
+- ✅ Status: Ready
+
+**DNS**:
+- ⏳ No DNSPolicy (expected - matches ansible)
+- ⏳ No automatic DNS records created
+- Manual DNS records or DNSPolicy deployment required for external access
+
+**Policies**:
+- ✅ AuthPolicy: Deny-by-default (returns HTTP 403)
+- ✅ RateLimitPolicy: 5 requests per 10 seconds
+- ✅ TLSPolicy: Enforced (cert auto-managed)
+
+**Monitoring**:
+- ✅ ServiceMonitor: Collecting Gateway metrics
+- ✅ PodMonitor: Collecting Istio proxy metrics
+- ✅ Metrics Service: Port 15020 exposed
+
+**Namespace**:
+- ✅ Label `argocd.argoproj.io/managed-by: openshift-gitops` present
+- ✅ Auto-created Role and RoleBinding for ArgoCD
+
+## Key Differences from Ansible
+
+**The ONLY delta** between ansible and this deployment:
+
+| Aspect | Ansible | Our Deployment | Impact |
+|--------|---------|----------------|--------|
+| **Namespace label** | ❌ Manual `oc label` | ✅ In Git manifests | **Better** - Fully GitOps |
+| **Resource names** | ✅ | ✅ | Identical |
+| **Gateway hostname** | `*.globex.<root-domain>` | `*.globex.<root-domain>` | Identical |
+| **ClusterIssuer** | `prod-web-lets-encrypt-issuer` | `prod-web-lets-encrypt-issuer` | Identical |
+| **DNSPolicy** | ❌ Not included | ❌ Not included | Identical |
+
+**Result**: 100% functional match + better GitOps integration ✅
+
+## Related Documentation
+
+- [INGRESS_GATEWAY_DEPLOYMENT.md](../../../INGRESS_GATEWAY_DEPLOYMENT.md) - Complete deployment analysis
+- [CLEANUP_AND_REDEPLOY.md](../../../CLEANUP_AND_REDEPLOY.md) - Step-by-step cleanup guide
+- [CLAUDE.md](../../../CLAUDE.md) - Full project documentation
