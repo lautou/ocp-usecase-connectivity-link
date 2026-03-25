@@ -6,6 +6,7 @@ resources:
   - cluster-gatewayclass-istio.yaml
   - cluster-clusterrole-gateway-manager.yaml
   - cluster-crb-gateway-manager-openshift-gitops-argocd-application-controller.yaml
+  - cluster-clusterissuer-prod-web-lets-encrypt.yaml
 
   # Namespaces
   - cluster-ns-echo-api.yaml
@@ -57,6 +58,11 @@ resources:
   - ingress-gateway-gateway-prod-web.yaml
   - ingress-gateway-ratelimitpolicy-prod-web.yaml
   - ingress-gateway-tlspolicy-prod-web.yaml
+
+  # Monitoring resources (matches ansible deployment)
+  - ingress-gateway-servicemonitor-prod-web.yaml
+  - ingress-gateway-podmonitor-istio-proxies.yaml
+  - ingress-gateway-service-prod-web-metrics-proxy.yaml
 
   # openshift-gitops namespace resources (Jobs for dynamic configuration)
   - openshift-gitops-job-aws-credentials.yaml

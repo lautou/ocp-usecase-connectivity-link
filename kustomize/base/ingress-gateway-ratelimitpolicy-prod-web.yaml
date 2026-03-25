@@ -1,7 +1,7 @@
 apiVersion: kuadrant.io/v1
 kind: RateLimitPolicy
 metadata:
-  name: prod-web
+  name: prod-web-rlp-lowlimits
   namespace: ingress-gateway
 spec:
   targetRef:
