@@ -2,36 +2,4 @@ apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 
 resources:
-  # Cluster-scoped resources
-  - ../../base/cluster-gatewayclass-istio.yaml
-  - ../../base/cluster-clusterrole-gateway-manager.yaml
-  - ../../base/cluster-crb-gateway-manager-openshift-gitops-argocd-application-controller.yaml
-  - ../../base/cluster-clusterissuer-prod-web-lets-encrypt.yaml
-
-  # Namespaces
-  - ../../base/cluster-ns-ingress-gateway.yaml
-
-  # ingress-gateway namespace resources (matches ansible deployment)
-  - ../../base/ingress-gateway-authpolicy-prod-web-deny-all.yaml
-  - ../../base/ingress-gateway-gateway-prod-web.yaml
-  - ../../base/ingress-gateway-ratelimitpolicy-prod-web.yaml
-  - ../../base/ingress-gateway-tlspolicy-prod-web.yaml
-
-  # Monitoring resources (matches ansible deployment)
-  - ../../base/ingress-gateway-servicemonitor-prod-web.yaml
-  - ../../base/ingress-gateway-podmonitor-istio-proxies.yaml
-  - ../../base/ingress-gateway-service-prod-web-metrics-proxy.yaml
-
-  # Jobs for dynamic configuration
-  - ../../base/openshift-gitops-job-aws-credentials.yaml
-  - ../../base/openshift-gitops-job-gateway-prod-web.yaml
-
-# Exclude:
-# - DNSPolicy (not in ansible deployment)
-# - echo-api resources
-# - globex-apim-user1 resources
-# - keycloak resources
-# - ProductCatalog HTTPRoute
-# - HTTPRoute Jobs
-# - DNS delegation Job
-# - CronJob patch monitor
+  - ../../base-ingress-gateway
