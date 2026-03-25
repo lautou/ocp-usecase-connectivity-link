@@ -2,4 +2,26 @@ apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 
 resources:
-  - ../../base-ingress-gateway
+  # Cluster-scoped resources
+  - cluster-gatewayclass-istio.yaml
+  - cluster-clusterrole-gateway-manager.yaml
+  - cluster-crb-gateway-manager-openshift-gitops-argocd-application-controller.yaml
+  - cluster-clusterissuer-prod-web-lets-encrypt.yaml
+
+  # Namespaces
+  - cluster-ns-ingress-gateway.yaml
+
+  # ingress-gateway namespace resources
+  - ingress-gateway-authpolicy-prod-web-deny-all.yaml
+  - ingress-gateway-gateway-prod-web.yaml
+  - ingress-gateway-ratelimitpolicy-prod-web.yaml
+  - ingress-gateway-tlspolicy-prod-web.yaml
+
+  # Monitoring resources
+  - ingress-gateway-servicemonitor-prod-web.yaml
+  - ingress-gateway-podmonitor-istio-proxies.yaml
+  - ingress-gateway-service-prod-web-metrics-proxy.yaml
+
+  # Jobs for dynamic configuration
+  - openshift-gitops-job-aws-credentials.yaml
+  - openshift-gitops-job-gateway-prod-web.yaml

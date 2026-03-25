@@ -1,0 +1,21 @@
+apiVersion: cert-manager.io/v1
+kind: ClusterIssuer
+metadata:
+  name: prod-web-lets-encrypt-issuer
+spec:
+  acme:
+    email: ltourrea@redhat.com  # Email for Let's Encrypt notifications
+    preferredChain: ""
+    privateKeySecretRef:
+      name: le-production
+    server: https://acme-v02.api.letsencrypt.org/directory
+    solvers:
+      - dns01:
+          route53:
+            accessKeyIDSecretRef:
+              key: AWS_ACCESS_KEY_ID
+              name: prod-web-aws-credentials
+            region: eu-central-1
+            secretAccessKeySecretRef:
+              key: AWS_SECRET_ACCESS_KEY
+              name: prod-web-aws-credentials

@@ -1,0 +1,60 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  annotations:
+    argocd.argoproj.io/hook: PostSync
+    argocd.argoproj.io/hook-delete-policy: BeforeHookCreation
+    argocd.argoproj.io/sync-wave: "3"
+    argocd.argoproj.io/sync-options: Force=true
+  name: gateway-prod-web-setup
+  namespace: openshift-gitops
+spec:
+  template:
+    metadata:
+      name: gateway-prod-web-setup
+    spec:
+      containers:
+        - command:
+            - /bin/bash
+            - -c
+            - |
+              #!/bin/bash
+              set -e
+
+              echo "========================================"
+              echo "Gateway prod-web Hostname Patch"
+              echo "========================================"
+
+              # Get cluster domain
+              echo ""
+              echo "[1/2] Getting cluster domain..."
+              BASE_DOMAIN=$(oc get dns cluster -o jsonpath='{.spec.baseDomain}')
+              GATEWAY_HOSTNAME="*.globex.${BASE_DOMAIN}"
+
+              echo "✓ Cluster base domain: ${BASE_DOMAIN}"
+              echo "✓ Target hostname: ${GATEWAY_HOSTNAME}"
+              echo "✓ Pattern: Wildcard hostname"
+
+              # Patch Gateway hostname
+              echo ""
+              echo "[2/2] Patching Gateway hostname..."
+
+              oc patch gateway prod-web -n ingress-gateway --type=json -p="[
+                {\"op\": \"replace\", \"path\": \"/spec/listeners/0/hostname\", \"value\": \"${GATEWAY_HOSTNAME}\"}
+              ]"
+
+              echo ""
+              echo "========================================"
+              echo "✅ Gateway hostname updated successfully!"
+              echo "========================================"
+              echo ""
+              echo "📋 Summary:"
+              echo "  Gateway: prod-web"
+              echo "  Namespace: ingress-gateway"
+              echo "  Hostname: ${GATEWAY_HOSTNAME}"
+              echo ""
+
+          image: registry.redhat.io/openshift4/ose-cli:latest
+          name: gateway-prod-web-setup
+      restartPolicy: OnFailure
+      serviceAccountName: openshift-gitops-argocd-application-controller
