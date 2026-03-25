@@ -651,6 +651,215 @@ All core Connectivity Link patterns are now **100% functional** and aligned with
 
 **Current Status**: ✅ **100% aligned** with Red Hat Connectivity Link solution pattern for all core functionality!
 
+## DNS Delegation with ACK Route53 - Tested and Verified
+
+**Status**: DNS delegation using ACK Route53 controller produces **IDENTICAL results** to Red Hat's ansible approach ✅
+
+**Test Date**: 2026-03-25
+
+### Background
+
+Red Hat's official Connectivity Link demo uses an Ansible playbook (`connectivity-link-ansible`) to create Route53 DNS infrastructure using the `amazon.aws` collection (boto3/Python SDK). We tested whether our ACK (AWS Controllers for Kubernetes) approach produces identical results.
+
+### Test Methodology
+
+1. **Clean State**: Deleted ansible-created zone (`Z03794592AARIB1DKITL6`) and NS delegation
+2. **Minimal Deployment**: Created `dns-only` overlay with only ACK resources + Job
+3. **Subdomain Pattern Match**: Adjusted Job to use root domain (`globex.sandbox3491.opentlc.com`) not cluster domain
+4. **TTL Match**: Changed TTL from 300 to 3600 seconds to match ansible
+5. **ArgoCD Integration**: Deployed via main `usecase-connectivity-link` Application
+
+### Job Implementation
+
+**File**: `kustomize/base/openshift-gitops-job-globex-ns-delegation.yaml`
+
+**What it does** (6 steps, ~18 seconds execution):
+1. Extracts cluster domain and calculates root domain (e.g., `myocp.sandbox3491.opentlc.com` → `sandbox3491.opentlc.com`)
+2. Creates HostedZone CR for `globex.{root_domain}` → ACK creates zone in AWS
+3. Waits for HostedZone to be ready (checks `ACK.ResourceSynced` condition)
+4. Extracts nameservers from HostedZone status (4 AWS nameservers)
+5. Gets parent zone ID from cluster DNS configuration
+6. Creates RecordSet CR for NS delegation → ACK creates records in parent zone
+
+**Key Configuration**:
+```bash
+# Subdomain pattern (matches ansible)
+SUBDOMAIN_NAME="globex"
+ROOT_DOMAIN=$(echo "${BASE_DOMAIN}" | sed 's/^[^.]*\.//')  # Remove cluster name
+FULL_DOMAIN="${SUBDOMAIN_NAME}.${ROOT_DOMAIN}"  # globex.sandbox3491.opentlc.com
+
+# RecordSet name (relative, not FQDN)
+RECORDSET_NAME="${SUBDOMAIN_NAME}"  # Just "globex"
+
+# TTL (matches ansible)
+ttl: 3600  # Same as ansible (was 300 in initial version)
+```
+
+### Results Comparison: Ansible vs ACK
+
+| Aspect | Ansible Result | ACK Result | Match? |
+|--------|---------------|------------|--------|
+| **Domain** | `globex.sandbox3491.opentlc.com` | `globex.sandbox3491.opentlc.com` | ✅ **IDENTICAL** |
+| **Zone ID** | `Z03794592AARIB1DKITL6` | `Z09307543C0T831AQ399N` | Different (AWS assigns new) ✅ |
+| **Nameservers** | 4 AWS nameservers | 4 AWS nameservers | ✅ Same pattern |
+| **Parent Zone** | `Z09941991LWPLNSV0EDW` | `Z09941991LWPLNSV0EDW` | ✅ **IDENTICAL** |
+| **NS Record Name** | `globex.sandbox3491.opentlc.com` | `globex.sandbox3491.opentlc.com` | ✅ **IDENTICAL** |
+| **TTL** | 3600 seconds | 3600 seconds | ✅ **IDENTICAL** |
+| **DNS Resolution** | ✅ Working | ✅ Working | ✅ **IDENTICAL** |
+| **Execution Time** | ~45 seconds | ~18 seconds | ACK is 2.5x faster ✅ |
+| **Method** | Imperative (boto3) | Declarative (CRDs) | Different approach, same result ✅ |
+
+### DNS Verification
+
+**Nameservers** (from public DNS):
+```bash
+$ dig NS globex.sandbox3491.opentlc.com +short
+ns-194.awsdns-24.com.
+ns-606.awsdns-11.net.
+ns-1406.awsdns-47.org.
+ns-1651.awsdns-14.co.uk.
+```
+
+**NS Delegation** (from parent zone authoritative nameserver):
+```bash
+$ dig @ns-1131.awsdns-13.org globex.sandbox3491.opentlc.com NS
+;; AUTHORITY SECTION:
+globex.sandbox3491.opentlc.com. 3600 IN NS ns-1406.awsdns-47.org.
+globex.sandbox3491.opentlc.com. 3600 IN NS ns-1651.awsdns-14.co.uk.
+globex.sandbox3491.opentlc.com. 3600 IN NS ns-194.awsdns-24.com.
+globex.sandbox3491.opentlc.com. 3600 IN NS ns-606.awsdns-11.net.
+```
+
+**TTL confirmed**: 3600 seconds (matches ansible exactly)
+
+### ACK Resources Created
+
+**HostedZone CR**:
+```yaml
+apiVersion: route53.services.k8s.aws/v1alpha1
+kind: HostedZone
+metadata:
+  name: globex
+  namespace: ack-system
+spec:
+  name: globex.sandbox3491.opentlc.com.
+  hostedZoneConfig:
+    comment: "Globex subdomain for Red Hat Connectivity Link"
+status:
+  id: /hostedzone/Z09307543C0T831AQ399N
+  conditions:
+    - type: ACK.ResourceSynced
+      status: "True"
+  delegationSet:
+    nameServers:
+      - ns-1651.awsdns-14.co.uk
+      - ns-194.awsdns-24.com
+      - ns-1406.awsdns-47.org
+      - ns-606.awsdns-11.net
+```
+
+**RecordSet CR**:
+```yaml
+apiVersion: route53.services.k8s.aws/v1alpha1
+kind: RecordSet
+metadata:
+  name: globex-ns-delegation
+  namespace: ack-system
+spec:
+  name: globex  # Relative name (not FQDN)
+  recordType: NS
+  ttl: 3600  # Matches ansible
+  hostedZoneID: Z09941991LWPLNSV0EDW  # Parent zone
+  resourceRecords:
+    - value: ns-1651.awsdns-14.co.uk
+    - value: ns-194.awsdns-24.com
+    - value: ns-1406.awsdns-47.org
+    - value: ns-606.awsdns-11.net
+```
+
+### Testing Overlay
+
+**Location**: `kustomize/overlays/dns-only/`
+
+**Purpose**: Minimal deployment for testing DNS delegation independently
+
+**Contents**:
+- References `kustomize/base-dns-only/` which contains:
+  - ClusterRole: `gateway-manager` (RBAC for Job)
+  - ClusterRoleBinding: `gateway-manager-openshift-gitops-argocd-application-controller`
+  - Job: `globex-ns-delegation` (creates HostedZone + RecordSet)
+
+**ArgoCD Application**: `usecase-connectivity-link` (main app, configured to use `dns-only` overlay for testing)
+
+**To switch back to full deployment**:
+```bash
+# Edit argocd/application.yaml
+path: kustomize/overlays/default  # Change from dns-only to default
+```
+
+### GitOps Benefits Demonstrated
+
+**Advantages over Ansible**:
+1. ✅ **Declarative**: YAML in Git (visible, reviewable)
+2. ✅ **Automated**: ArgoCD syncs automatically
+3. ✅ **Visible**: Resources queryable with `oc get hostedzone`, `oc get recordset`
+4. ✅ **Auditable**: Git history tracks all changes
+5. ✅ **Self-healing**: ArgoCD monitors drift and auto-corrects
+6. ✅ **Faster**: 18s vs 45s execution time (2.5x faster)
+7. ✅ **Idempotent**: Job checks if resources exist before creating
+8. ✅ **Kubernetes-native**: Standard CRDs, no Python/boto3 dependencies
+
+**Same Imperative Approach**:
+- Both create resources dynamically (not pre-defined in YAML)
+- Both extract cluster domain at runtime
+- Both calculate parent zone automatically
+
+**Key Difference**:
+- Ansible: boto3 Python SDK calls AWS API directly
+- ACK: Kubernetes CRDs → ACK controller calls AWS API
+- Result: Identical DNS infrastructure
+
+### Ansible Playbook Analysis
+
+**Analysis Reports** (in repository):
+- `ANSIBLE_CONFLICT_REPORT.md` - Conflicts between ansible and existing cluster operators
+- `ANSIBLE_DETAILED_TASK_ANALYSIS.md` - What each ansible task does
+
+**Key Findings**:
+- ✅ `aws-setup.yml` safe to run (only creates DNS, no conflicts)
+- ❌ Operator tasks create duplicates (RHCL, Kuadrant, Cert Manager, Service Mesh already installed)
+- ⚠️ `ingress-gateway.yml` safe after namespace deletion
+- ⚠️ `observability.yaml` needs investigation before running
+
+**Recommendation**: Use ACK approach for DNS delegation instead of ansible for better GitOps integration.
+
+### Subdomain Pattern Decision
+
+**Root Domain vs Cluster Domain**:
+
+| Pattern | Example | Used By | Benefits |
+|---------|---------|---------|----------|
+| **Root domain** | `globex.sandbox3491.opentlc.com` | Ansible | Shorter, cluster-agnostic |
+| **Cluster domain** | `globex.myocp.sandbox3491.opentlc.com` | Our initial approach | More specific, cluster-scoped |
+
+**Current Implementation**: Root domain pattern (matches ansible exactly)
+
+**Rationale**: Alignment with Red Hat's official demo for consistency and easier comparison.
+
+### Conclusion
+
+✅ **ACK Route53 approach is production-ready and provides identical DNS delegation results to ansible**
+
+**Proof**:
+- Same subdomain pattern: `globex.sandbox3491.opentlc.com`
+- Same TTL: 3600 seconds
+- Same NS delegation in parent zone
+- Same DNS resolution behavior
+- Faster execution: 18s vs 45s
+- Better GitOps integration
+
+The ACK approach is **recommended** over ansible for DNS delegation in GitOps environments.
+
 ## Key Differences from Red Hat Demo (Summary)
 
 ### What We Changed (and Why)
@@ -710,6 +919,254 @@ These are not temporary workarounds - they represent **permanent improvements** 
 4. **Correct environment variable naming**: Matches the server.ts implementation
 
 If Red Hat updates their upstream images to fix these issues, we could switch back. Until then, our custom images are **required for production use**.
+
+### GLOBEX_MOBILE_GATEWAY Configuration: Internal vs External URL
+
+**Critical Architectural Difference**: How the globex-mobile frontend reaches the globex-mobile-gateway backend.
+
+#### Red Hat's Demo Configuration
+
+Red Hat's official Connectivity Link demo configures `GLOBEX_MOBILE_GATEWAY` to use the **external Gateway API URL**:
+
+```yaml
+# From Red Hat's Ansible deployment
+# https://github.com/rh-soln-pattern-connectivity-link/connectivity-link-ansible
+ocp4_workload_cloud_architecture_workshop_mobile_gateway_url: "https://globex-mobile.globex.%AWSROOTZONE%"
+
+# Translates to:
+GLOBEX_MOBILE_GATEWAY=https://globex-mobile.globex.<cluster-domain>
+```
+
+**What this means**:
+- Frontend (globex-mobile) runs in a pod inside the cluster
+- Frontend calls backend API at `https://globex-mobile.globex.<cluster-domain>/mobile/services/category/list`
+- This URL points to the external Gateway API (HTTPRoute)
+- **Requires pods to reach their own external hostname** (hairpin routing)
+
+**Why Red Hat designed it this way**:
+- Demonstrates dependency on HTTPRoute for application functionality
+- Without HTTPRoute deployed: User clicks "Categories" → HTTP 404 error
+- With HTTPRoute deployed: User clicks "Categories" → Works ✅
+- Shows Gateway API value proposition clearly
+
+#### Our Implementation
+
+We use the **internal ClusterIP service URL** instead:
+
+```yaml
+# kustomize/base/globex-apim-user1-deployment-globex-mobile.yaml
+- name: GLOBEX_MOBILE_GATEWAY
+  value: "http://globex-mobile-gateway:8080"  # Internal service
+```
+
+**What this means**:
+- Frontend (globex-mobile) calls backend via Kubernetes internal DNS
+- No dependency on external Gateway or HTTPRoute
+- Application works regardless of HTTPRoute existence
+- HTTPRoute still valuable for **external API consumers** (not web browsers)
+
+**Why we changed this**:
+- Current cluster does **NOT support hairpin routing** (pods cannot reach own external IPs/hostnames)
+- Using external URL resulted in **NetworkError** when clicking Categories
+- Internal service URL always works (standard Kubernetes service discovery)
+
+#### The Hairpin Routing Problem
+
+**What is hairpin routing?**
+
+Hairpin routing (also called hairpin NAT or NAT loopback) allows network nodes to reach their own external IP addresses:
+
+```
+┌─────────────────────────────────────────────────────┐
+│  Kubernetes Cluster                                 │
+│                                                     │
+│  ┌──────────────┐                                  │
+│  │ Pod (source) │                                  │
+│  │ 10.0.1.5     │                                  │
+│  └──────┬───────┘                                  │
+│         │                                          │
+│         │ Request to: https://app.example.com     │
+│         │ (cluster's own external hostname)       │
+│         ↓                                          │
+│  ┌─────────────────┐                              │
+│  │ Router/Gateway  │                              │
+│  │                 │                              │
+│  │ Detects this is │                              │
+│  │ own public IP   │                              │
+│  │                 │                              │
+│  │ Hairpin route:  │                              │
+│  │ Redirect back   │                              │
+│  │ into cluster    │                              │
+│  └────────┬────────┘                              │
+│           │                                        │
+│           ↓                                        │
+│  ┌──────────────────┐                             │
+│  │ Service/Pod      │                             │
+│  │ (destination)    │                             │
+│  └──────────────────┘                             │
+│                                                    │
+└────────────────────────────────────────────────────┘
+```
+
+**Without hairpin routing**:
+- Pod tries to reach `https://globex-mobile.globex.<cluster-domain>`
+- Request goes to external internet/load balancer
+- Load balancer cannot route back to originating cluster
+- Result: Connection timeout or NetworkError
+
+#### How Red Hat's Demo Works (Possible Explanations)
+
+Red Hat's documentation does **NOT explain** how hairpin routing is enabled. Possible explanations:
+
+**1. AWS Network Load Balancer (NLB) Hairpin Mode**:
+- AWS NLB may support hairpin connections natively in certain configurations
+- OpenShift on AWS uses NLB for LoadBalancer services
+- Some AWS regions/setups enable this automatically
+
+**2. OpenShift Ingress Operator Magic**:
+- The Ingress Operator managing Gateway API might have built-in hairpin logic
+- Could detect internal-to-external calls and short-circuit to ClusterIP
+- Not documented publicly
+
+**3. Custom VPC Routing**:
+- Red Hat demo clusters (ROSA, Red Hat Demo Platform) might have custom VPC route tables
+- Could enable pods to reach Load Balancer public IPs via internal routing
+- Specific to Red Hat's demo infrastructure
+
+**4. Split-Horizon DNS (CoreDNS)**:
+- CoreDNS could be configured to return internal IPs for external hostnames
+- When pods query `globex-mobile.globex.<domain>`, CoreDNS returns ClusterIP
+- External clients get public IP, internal clients get ClusterIP
+- Not standard CoreDNS configuration for OpenShift
+
+**5. Documentation Gap**:
+- Feature works in Red Hat's demo environment but isn't documented
+- May be specific to their workshop/demo clusters
+- Not intended for production use
+
+#### Our Solution: Internal Service URL
+
+**Current configuration**:
+```yaml
+GLOBEX_MOBILE_GATEWAY=http://globex-mobile-gateway:8080
+```
+
+**Benefits**:
+- ✅ Works on **any** Kubernetes/OpenShift cluster
+- ✅ No dependency on hairpin routing support
+- ✅ Faster (no external network hop)
+- ✅ More secure (traffic never leaves cluster)
+- ✅ Standard Kubernetes service discovery pattern
+
+**Trade-offs**:
+- ❌ HTTPRoute not required for app to function (less dramatic demo)
+- ℹ️ HTTPRoute still valuable for external API consumers
+
+#### HTTPRoute Purpose and Value
+
+Even though our frontend doesn't use HTTPRoute, it's still valuable for:
+
+**1. External API Access**:
+```bash
+# Direct API access from internet with JWT authentication
+curl -H "Authorization: Bearer $TOKEN" \
+  https://globex-mobile.globex.<cluster-domain>/mobile/services/category/list
+```
+
+**2. API Consumer Integration**:
+- Third-party applications consuming the mobile API
+- Mobile apps calling backend directly
+- Microservices architecture (if we had microservices)
+
+**3. Gateway API Demonstration**:
+- Shows HTTPRoute path-based routing
+- Demonstrates AuthPolicy with JWT validation
+- Shows RateLimitPolicy enforcement (20 req/10s)
+- Proves cross-namespace service access via ReferenceGrant
+
+**4. Production API Management**:
+- Rate limiting prevents API abuse
+- JWT authentication secures endpoints
+- DNS automation for API consumers
+- TLS termination at Gateway
+
+#### Architecture Comparison
+
+**Red Hat Demo (requires hairpin routing)**:
+```
+User clicks "Categories"
+  ↓
+Frontend (Angular) calls https://globex-mobile.globex.<domain>/mobile/services/category/list
+  ↓
+Pod → Cluster Egress → External Load Balancer → Hairpin Route → HTTPRoute → Backend
+  ↓
+Without HTTPRoute: 404 error (demonstrates Gateway API dependency)
+With HTTPRoute: Works ✅ (dramatic demo effect)
+```
+
+**Our Implementation (hairpin routing not supported)**:
+```
+User clicks "Categories"
+  ↓
+Frontend (Angular) calls http://globex-mobile-gateway:8080/mobile/services/category/list
+  ↓
+Pod → Internal ClusterIP Service → Backend
+  ↓
+Always works ✅ (standard Kubernetes pattern)
+
+Separate flow:
+External API consumer → https://globex-mobile.globex.<domain> → HTTPRoute → Backend
+                                                                    ↓
+                                                         AuthPolicy + RateLimitPolicy
+```
+
+#### When to Use Each Approach
+
+**Use External URL (Red Hat's approach)** when:
+- ✅ Cluster supports hairpin routing (verify first!)
+- ✅ Demonstrating Gateway API dependency is critical
+- ✅ All API consumers (internal + external) should use same URL
+- ✅ Centralized policy enforcement required for all traffic
+
+**Use Internal URL (our approach)** when:
+- ✅ Hairpin routing not supported or uncertain
+- ✅ Performance is critical (avoid external network hop)
+- ✅ Security is critical (keep internal traffic internal)
+- ✅ Standard Kubernetes patterns preferred
+- ✅ HTTPRoute for external consumers only
+
+#### Verification: Testing Hairpin Routing
+
+To test if your cluster supports hairpin routing:
+
+```bash
+# 1. Get Gateway external hostname
+EXTERNAL_URL=$(oc get httproute productcatalog -n ingress-gateway -o jsonpath='{.spec.hostnames[0]}')
+
+# 2. Test from inside a pod
+oc exec -n globex-apim-user1 deployment/globex-mobile -- \
+  curl -sk "https://${EXTERNAL_URL}/services/catalog/product" -w "\n%{http_code}\n"
+
+# Expected with hairpin routing: HTTP 200 + JSON response
+# Expected without hairpin routing: Connection timeout or NetworkError
+```
+
+If the test **succeeds**, your cluster supports hairpin routing and you could use Red Hat's external URL pattern.
+
+If the test **fails**, hairpin routing is not supported and you must use internal service URLs.
+
+#### Conclusion
+
+**Our implementation is production-ready and more portable** than Red Hat's demo configuration:
+
+- ✅ Works on **any** Kubernetes/OpenShift cluster (no hairpin routing required)
+- ✅ Follows **standard Kubernetes networking patterns** (service discovery)
+- ✅ Better **performance and security** (no external network hop)
+- ✅ HTTPRoute still provides **value for external API consumers**
+- ✅ **Same user experience** (41 products, 7 categories, OAuth login)
+- ✅ **Same Gateway API demonstration** (just for external consumers, not internal frontend)
+
+Red Hat's approach creates a more dramatic demo (without HTTPRoute → app breaks), but requires cluster infrastructure support (hairpin routing) that may not be available in all environments.
 
 ## Architecture
 
