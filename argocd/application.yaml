@@ -11,10 +11,9 @@ spec:
   source:
     repoURL: https://github.com/lautou/ocp-usecase-connectivity-link.git
     targetRevision: main
-    path: kustomize/overlays/dns-only
+    path: kustomize/overlays/default
   destination:
     server: https://kubernetes.default.svc
-    namespace: ack-system
   ignoreDifferences:
     - group: gateway.networking.k8s.io
       kind: Gateway
@@ -56,3 +55,5 @@ spec:
     automated:
       prune: true
       selfHeal: true
+    syncOptions:
+      - CreateNamespace=true

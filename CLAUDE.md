@@ -8,6 +8,68 @@ This repository contains GitOps manifests for deploying Red Hat Connectivity Lin
 
 **Purpose**: Automate the creation of DNS infrastructure (Route53 hosted zone with delegation), Istio Gateway with TLS, and a demo application (echo-api) for the Connectivity Link use case on OpenShift clusters running on AWS.
 
+## Kubernetes YAML Attribute Ordering
+
+**IMPORTANT**: All Kubernetes YAML manifests MUST follow the standard attribute ordering convention for consistency and readability.
+
+### Top-Level Structure
+
+```yaml
+apiVersion: <version>
+kind: <Kind>
+metadata:
+  <metadata attributes>
+spec:
+  <spec attributes>
+status:  # (read-only, typically not in manifests)
+  <status attributes>
+```
+
+### Metadata Section Ordering
+
+**Required order** for metadata attributes:
+
+1. **name** - Resource name (always first in metadata)
+2. **namespace** - Namespace (if resource is namespaced)
+3. **labels** - Key-value labels (if present)
+4. **annotations** - Key-value annotations (if present)
+5. Other metadata fields (generateName, uid, etc.)
+
+**Correct Example**:
+```yaml
+metadata:
+  name: my-resource
+  namespace: my-namespace
+  labels:
+    app.kubernetes.io/name: my-app
+    app.kubernetes.io/part-of: my-project
+  annotations:
+    argocd.argoproj.io/hook: PostSync
+    argocd.argoproj.io/sync-wave: "1"
+```
+
+**Incorrect Example** (annotations before name):
+```yaml
+metadata:
+  annotations:  # ❌ Wrong - annotations should come after name, namespace, labels
+    argocd.argoproj.io/hook: PostSync
+  name: my-resource
+  namespace: my-namespace
+```
+
+### Enforcement
+
+- All YAML files in `kustomize/base/` and `kustomize/overlays/` MUST follow this ordering
+- When creating or modifying manifests, always verify attribute ordering
+- Use this ordering for consistency with Kubernetes community standards
+
+### Rationale
+
+1. **Readability**: Standard ordering makes files easier to scan and understand
+2. **Consistency**: Easier to compare files and spot differences
+3. **Tooling**: Some tools expect this ordering (e.g., kubectl, kustomize)
+4. **Best Practice**: Follows Kubernetes community conventions
+
 ## ✅ RHBK 26 Compatibility - RESOLVED
 
 **Status**: globex-mobile application is now **FULLY COMPATIBLE** with Red Hat build of Keycloak (RHBK) 26.x ✅

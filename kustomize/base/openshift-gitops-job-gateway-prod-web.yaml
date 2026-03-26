@@ -1,13 +1,13 @@
 apiVersion: batch/v1
 kind: Job
 metadata:
+  name: gateway-prod-web-setup
+  namespace: openshift-gitops
   annotations:
     argocd.argoproj.io/hook: PostSync
     argocd.argoproj.io/hook-delete-policy: BeforeHookCreation
     argocd.argoproj.io/sync-wave: "3"
     argocd.argoproj.io/sync-options: Force=true
-  name: gateway-prod-web-setup
-  namespace: openshift-gitops
 spec:
   template:
     metadata:
