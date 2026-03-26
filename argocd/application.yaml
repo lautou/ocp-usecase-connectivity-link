@@ -19,18 +19,6 @@ spec:
       kind: Gateway
       jsonPointers:
         - /spec/listeners/0/hostname
-    - group: gateway.networking.k8s.io
-      kind: HTTPRoute
-      name: echo-api
-      namespace: echo-api
-      jsonPointers:
-        - /spec/hostnames
-    - group: gateway.networking.k8s.io
-      kind: HTTPRoute
-      name: globex-mobile-gateway
-      namespace: globex-apim-user1
-      jsonPointers:
-        - /spec/hostnames
     - group: kuadrant.io
       kind: AuthPolicy
       name: globex-mobile-gateway
