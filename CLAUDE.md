@@ -1428,10 +1428,18 @@ Red Hat's approach creates a more dramatic demo (without HTTPRoute → app break
      - 2 steps (one patch per deployment), ~5 seconds execution
      - **Automatic re-run**: If deployments get deleted/recreated
 
+   - **Job #7: Keycloak Hostname Patch** (`openshift-gitops-job-keycloak-hostname.yaml`)
+     - **Hook**: PostSync (wave 3, parallel with Gateway/HTTPRoute patches)
+     - Patches Keycloak CR hostname from placeholder to `keycloak-rhbk.<apps-domain>`
+     - Uses apps domain (not root domain): `keycloak-rhbk.apps.myocp.sandbox3491.opentlc.com`
+     - 2 steps, ~5 seconds execution
+     - **Automatic re-run**: If Keycloak CR gets deleted/recreated
+     - **Namespace**: Job runs in openshift-gitops namespace, patches resource in rhbk namespace
+
    **Robustness Features:**
    - ✅ PostSync hooks run on Git commits and manual syncs (95% of cases)
    - ✅ Jobs use sync waves for proper ordering (1 → 2 → 3 → 4)
-   - ✅ Jobs #3, #4, #5 run in parallel (same wave 3)
+   - ✅ Jobs #3, #4, #5, #7 run in parallel (same wave 3)
    - ✅ `BeforeHookCreation` delete policy prevents duplicate Jobs
    - ✅ `Force=true` allows Job recreation if manually deleted
    - ✅ CronJob safety net catches edge cases (selfHeal scenarios)
@@ -1443,6 +1451,7 @@ Red Hat's approach creates a more dramatic demo (without HTTPRoute → app break
      - Gateway `prod-web` hostname (should be `*.globex.<cluster-domain>`)
      - HTTPRoute `echo-api` hostname (should be `echo.globex.<cluster-domain>`)
      - HTTPRoute `productcatalog` hostname (should be `catalog.globex.<cluster-domain>`)
+     - Keycloak `keycloak` hostname in rhbk namespace (should be `keycloak-rhbk.<apps-domain>`)
      - Deployment `globex-mobile` env vars (`SSO_AUTHORITY`, `SSO_REDIRECT_LOGOUT_URI`)
      - Deployment `globex-mobile-gateway` env var (`KEYCLOAK_AUTH_SERVER_URL`)
    - **Action**: If placeholder detected, automatically patches to correct value
@@ -1582,6 +1591,53 @@ Red Hat's approach creates a more dramatic demo (without HTTPRoute → app break
    - **Allows**: HTTPRoute `productcatalog` to reference Service `globex-store-app`
    - **Error without it**: `RefNotPermitted: backendRef globex-store-app/globex not accessible`
 
+18. **RHBK (Red Hat build of Keycloak)** (rhbk namespace)
+   - **Namespace** (`cluster-ns-rhbk.yaml`)
+     - **CRITICAL**: Must have label `argocd.argoproj.io/managed-by: openshift-gitops` for automatic RBAC
+     - Without this label: Kuadrant operators fail with permission errors
+   - **OperatorGroup** (`rhbk-operatorgroup.yaml`)
+     - Namespace-scoped operator installation
+   - **Subscription** (`rhbk-subscription-rhbk-operator.yaml`)
+     - Channel: `stable-v26.4`
+     - RHBK operator (namespace-scoped, not cluster-wide)
+   - **PostgreSQL Database**:
+     - Secret (`rhbk-secret-postgres-db.yaml`) - PostgreSQL credentials
+     - Secret (`rhbk-secret-keycloak-db-password.yaml`) - Keycloak database password
+     - Deployment (`rhbk-deployment-postgres-db.yaml`) - PostgreSQL 15 for Keycloak persistence
+     - Service (`rhbk-service-postgres-db.yaml`) - ClusterIP exposing port 5432
+   - **Keycloak CR** (`rhbk-keycloak.yaml`)
+     - API Version: `k8s.keycloak.org/v2alpha1` (RHBK 26 API)
+     - Instances: 1
+     - External database: postgres-db.rhbk.svc.cluster.local
+     - Hostname: `keycloak-rhbk.placeholder` (patched by Job #7)
+     - **CRITICAL - proxy-headers configuration**:
+       - `additionalOptions: [{name: proxy-headers, value: xforwarded}]`
+       - **Required** for OpenShift Route with edge TLS termination
+       - Without this: Admin console shows "somethingWentWrong" error
+       - Tells Keycloak to trust X-Forwarded-Proto/Host/For headers from proxy
+     - Ingress enabled: OpenShift Route created automatically by operator
+   - **KeycloakRealmImport** (`rhbk-keycloakrealmimport-apicurio.yaml`)
+     - Creates `apicurio` realm for Apicurio Studio
+     - 2 OAuth clients:
+       - `apicurio-api` - Bearer-only backend client with secret
+       - `apicurio-studio` - Public frontend client with PKCE
+     - **RHBK 26 Compliance**:
+       - `implicitFlowEnabled` removed (not supported in RHBK 26)
+       - `pkce.code.challenge.method: S256` enforced for public clients
+       - `sslRequired: external` (not "none")
+   - **Job** (`openshift-gitops-job-keycloak-hostname.yaml`)
+     - **Hook**: PostSync (wave 3, parallel with Gateway/HTTPRoute patches)
+     - Patches Keycloak CR hostname from placeholder to `keycloak-rhbk.<apps-domain>`
+     - Uses apps domain (not root domain): `keycloak-rhbk.apps.myocp.sandbox3491.opentlc.com`
+     - 2 steps, ~5 seconds execution
+     - **Automatic re-run**: If Keycloak CR gets deleted/recreated
+   - **ArgoCD Application** (`argocd/application-rhbk.yaml`)
+     - Project: `solution-patterns-connectivity-link`
+     - Path: `kustomize/rhbk`
+     - ignoreDifferences for Keycloak hostname field
+   - **Access**: Admin console at `https://keycloak-rhbk.apps.<cluster-domain>`
+   - **Admin Credentials**: Secret `keycloak-initial-admin` (username: `temp-admin`)
+
 ### GitOps Flow
 
 ```
@@ -1615,7 +1671,12 @@ Kustomize Base (43 manifests)
     │   ├── Backend: globex-store-app (Deployment + Service + ServiceAccount, NPE-fixed image)
     │   ├── Frontend: globex-mobile (Deployment + Service + ServiceAccount + Route)
     │   └── Mobile API: globex-mobile-gateway (Deployment + Service + ServiceAccount + Route)
-    ├── Jobs (7 total: AWS credentials, DNS setup, Gateway patch, 2× HTTPRoute patches, Globex env vars, Keycloak realm reimport)
+    ├── RHBK stack (rhbk namespace, separate Keycloak instance for Apicurio)
+    │   ├── OperatorGroup + Subscription (RHBK 26.4 operator, namespace-scoped)
+    │   ├── Database: postgres-db (Deployment + Service + 2 Secrets)
+    │   ├── Keycloak CR (v2alpha1 API, with proxy-headers for OpenShift Route)
+    │   └── KeycloakRealmImport (Apicurio realm with 2 OAuth clients, PKCE enforced)
+    ├── Jobs (8 total: AWS credentials, DNS setup, Gateway patch, 2× HTTPRoute patches, Globex env vars, Keycloak hostname, Keycloak realm reimport)
     └── CronJob (1 total: Patch monitor running every 10 minutes as safety net)
 
 Jobs execute in sequence:
@@ -1626,6 +1687,7 @@ Jobs execute in sequence:
     Job #4 (Echo HTTPRoute) → Patches echo-api HTTPRoute hostname to echo.globex.<cluster-domain> (~5s)
     Job #5 (ProductCatalog HTTPRoute) → Patches productcatalog HTTPRoute hostname to catalog.globex.<cluster-domain> (~5s)
     Job #6 (Globex Env) → Patches globex-mobile and globex-mobile-gateway env vars (~5s)
+    Job #7 (Keycloak Hostname) → Patches Keycloak CR hostname to keycloak-rhbk.<apps-domain> (~5s)
 
 Controllers execute:
     DNSPolicy → Creates CNAME records in Route53:
@@ -1639,6 +1701,7 @@ ArgoCD ignores runtime-patched fields (ignoreDifferences):
     - Gateway: /spec/listeners/0/hostname
     - HTTPRoute (echo-api): /spec/hostnames
     - HTTPRoute (productcatalog): /spec/hostnames
+    - Keycloak (rhbk): /spec/hostname/hostname
     - globex-mobile: /spec/template/spec/initContainers/0/env/0/value (SSO_AUTHORITY)
     - globex-mobile: /spec/template/spec/containers/0/env/8/value (SSO_AUTHORITY)
     - globex-mobile: /spec/template/spec/containers/0/env/9/value (SSO_REDIRECT_LOGOUT_URI)
@@ -1691,11 +1754,11 @@ End Result:
   - DNS Operator component must be running (manages DNS records in Route53)
   - Limitador component must be running (manages rate limiting)
 
-### Keycloak (Optional - for demo realm import)
-- **Red Hat Build of Keycloak (RHBK) Operator** installed (if using KeycloakRealmImport)
-  - Keycloak CR named `keycloak` must exist in `keycloak` namespace
-  - Keycloak instance must be running and accessible
-  - **Note**: This is optional - only needed if deploying the demo Globex realm
+### Keycloak (Optional - for demo applications)
+- **Red Hat Build of Keycloak (RHBK) Operator** (optional, deployed by this project)
+  - For Globex demo realm: Keycloak CR named `keycloak` must exist in `keycloak` namespace
+  - For Apicurio Studio: RHBK operator installed automatically in `rhbk` namespace (namespace-scoped)
+  - **Note**: Both are optional - only needed if deploying demo applications with OAuth
 
 ## Key Design Decisions
 
@@ -2101,7 +2164,11 @@ annotations:
 1. **Wave 0 (PreSync)**: Force realm reimport (deletes KeycloakRealmImport)
 2. **Wave 1**: AWS credentials setup (~5 seconds)
 3. **Wave 2**: DNS delegation setup (~45 seconds)
-4. **Wave 3**: Gateway + HTTPRoute patches (parallel, ~5 seconds each)
+4. **Wave 3**: Gateway + HTTPRoute + Keycloak hostname patches (parallel, ~5 seconds each)
+   - Job #3: Gateway hostname patch
+   - Job #4: Echo API HTTPRoute patch
+   - Job #5: ProductCatalog HTTPRoute patch
+   - Job #7: Keycloak hostname patch
 5. **Wave 4**: Globex environment variables (~5 seconds)
 
 **Robustness Features:**
@@ -2109,7 +2176,7 @@ annotations:
 - ✅ **Resource recreation**: If Gateway/HTTPRoute/Deployment gets deleted and recreated, placeholders are automatically re-patched
 - ✅ **Idempotent**: All Jobs use `oc apply` or `oc patch` (safe to re-run)
 - ✅ **No manual intervention**: ArgoCD selfHeal triggers Jobs automatically
-- ✅ **Parallel execution**: Jobs in same wave run concurrently (Jobs #3, #4, #5)
+- ✅ **Parallel execution**: Jobs in same wave run concurrently (Jobs #3, #4, #5, #7)
 - ✅ **Preserved for audit**: Completed Jobs remain visible (no TTL cleanup)
 
 ## Deployment
@@ -2384,11 +2451,25 @@ See [SECURITY.md](SECURITY.md) for complete security documentation.
 │   │   ├── openshift-gitops-job-productcatalog-httproute.yaml
 │   │   ├── openshift-gitops-cronjob-patch-monitor.yaml
 │   │   └── kustomization.yaml
+│   ├── rhbk/
+│   │   # RHBK (Red Hat build of Keycloak) resources
+│   │   ├── cluster-ns-rhbk.yaml
+│   │   ├── rhbk-operatorgroup.yaml
+│   │   ├── rhbk-subscription-rhbk-operator.yaml
+│   │   ├── rhbk-secret-postgres-db.yaml
+│   │   ├── rhbk-secret-keycloak-db-password.yaml
+│   │   ├── rhbk-deployment-postgres-db.yaml
+│   │   ├── rhbk-service-postgres-db.yaml
+│   │   ├── rhbk-keycloak.yaml
+│   │   ├── rhbk-keycloakrealmimport-apicurio.yaml
+│   │   ├── openshift-gitops-job-keycloak-hostname.yaml
+│   │   └── kustomization.yaml
 │   └── overlays/
 │       └── default/
 │           └── kustomization.yaml
 ├── argocd/
-│   └── application.yaml
+│   ├── application.yaml
+│   └── application-rhbk.yaml
 ├── config/
 │   └── cluster.yaml.example    # Cluster configuration template for deployment
 ├── scripts/
@@ -2403,15 +2484,16 @@ See [SECURITY.md](SECURITY.md) for complete security documentation.
 ```
 
 **Manifest Count**:
-- Cluster-scoped: 6 (ClusterRole, ClusterRoleBinding, GatewayClass, 3 Namespaces)
+- Cluster-scoped: 7 (ClusterRole, ClusterRoleBinding, GatewayClass, 4 Namespaces including rhbk)
 - echo-api: 5 (Deployment, Service, HTTPRoute, AuthPolicy, RateLimitPolicy)
 - ingress-gateway: 8 (Gateway, TLSPolicy, DNSPolicy, 2× AuthPolicy, 2× RateLimitPolicy, 2× HTTPRoute)
 - globex (monolith): 14 (4 deployments, 4 services, 4 service accounts, 1 secret, 1 ReferenceGrant)
 - globex routes: 2 (globex-mobile, globex-mobile-gateway)
-- Keycloak: 1 (KeycloakRealmImport with ⚠️ DEMO SECRETS)
-- Jobs: 7 (AWS credentials, DNS setup, Gateway patch, 2× HTTPRoute patches, Globex env vars, Keycloak realm reimport)
+- Keycloak (globex realm): 1 (KeycloakRealmImport with ⚠️ DEMO SECRETS)
+- RHBK stack: 10 (Namespace, OperatorGroup, Subscription, 2 Secrets, Deployment, Service, Keycloak CR, KeycloakRealmImport, Job)
+- Jobs: 8 (AWS credentials, DNS setup, Gateway patch, 2× HTTPRoute patches, Globex env vars, Keycloak hostname, Keycloak realm reimport)
 - CronJob: 1 (Patch monitor - safety net for automatic placeholder patching)
-- **Total**: 44 manifests (1 kustomization.yaml + 43 resource files)
+- **Total**: 56 manifests (2 kustomization.yaml files + 54 resource files)
 
 **File Naming Convention**: `<namespace>-<kind>-<name>.yaml`
 - `cluster-*` for cluster-scoped resources (no namespace)
@@ -2456,7 +2538,7 @@ Everything else is 100% dynamic → Works across different clusters/environments
 - ClusterRole `gateway-manager`
 - ClusterRoleBinding `gateway-manager-openshift-gitops-argocd-application-controller`
 - GatewayClass `istio`
-- Namespaces: `echo-api`, `ingress-gateway`, `globex`
+- Namespaces: `echo-api`, `ingress-gateway`, `globex`, `rhbk`
 
 **echo-api Namespace**:
 - Deployment `echo-api` (image: `quay.io/3scale/authorino:echo-api`)
@@ -2485,16 +2567,28 @@ Everything else is 100% dynamic → Works across different clusters/environments
 **keycloak Namespace**:
 - KeycloakRealmImport `globex-user1` (⚠️ DEMO SECRETS - OAuth client secrets)
 
-**openshift-gitops Namespace - Jobs** (7 total):
+**rhbk Namespace - RHBK Stack**:
+- Namespace `rhbk` with label `argocd.argoproj.io/managed-by: openshift-gitops`
+- OperatorGroup `rhbk`
+- Subscription `rhbk-operator` (channel: stable-v26.4)
+- Secret `postgres-db` (PostgreSQL credentials)
+- Secret `keycloak-db-password` (Keycloak database password)
+- Deployment `postgres-db` (PostgreSQL 15)
+- Service `postgres-db` (ClusterIP on port 5432)
+- Keycloak CR `keycloak` (v2alpha1 API, with placeholder hostname and proxy-headers config)
+- KeycloakRealmImport `apicurio` (Apicurio realm with 2 OAuth clients, PKCE enforced)
+
+**openshift-gitops Namespace - Jobs** (8 total):
 - Job `aws-credentials-setup` (creates AWS secrets for DNSPolicy and cert-manager)
 - Job `globex-ns-delegation` (creates HostedZone and RecordSet in Route53)
 - Job `gateway-prod-web-setup` (patches Gateway hostname to wildcard)
 - Job `echo-api-httproute-setup` (patches echo-api HTTPRoute hostname)
 - Job `productcatalog-httproute-setup` (patches productcatalog HTTPRoute hostname)
 - Job `globex-env-setup` (patches globex-mobile and globex-mobile-gateway env vars)
+- Job `keycloak-hostname-setup` (patches Keycloak CR hostname in rhbk namespace)
 - Job `force-realm-reimport` (PreSync hook to delete KeycloakRealmImport for updates)
 
-**Total**: 42 manifests in Git (1 kustomization.yaml + 41 resource files)
+**Total**: 64 manifests in Git across 2 Kustomize directories (base + rhbk)
 
 ### Dynamic Resources (created by Jobs/Controllers)
 
@@ -2873,8 +2967,8 @@ location.reload(true);
 - **Idempotent operations**: All Jobs use `oc apply` or `oc patch` making them safe to re-run
 - **Completed Jobs are preserved**: No TTL cleanup - Jobs remain for audit/debugging
 - **Force=true**: Allows manual Job deletion and recreation if needed
-- **Parallel execution**: Jobs in same sync wave run concurrently (Jobs #3, #4, #5 all in wave 3)
-- **Fast execution**: AWS credentials ~5s, DNS ~45s, Gateway/HTTPRoute patches ~5s each, Globex env ~5s
+- **Parallel execution**: Jobs in same sync wave run concurrently (Jobs #3, #4, #5, #7 all in wave 3)
+- **Fast execution**: AWS credentials ~5s, DNS ~45s, Gateway/HTTPRoute/Keycloak patches ~5s each, Globex env ~5s
 - **ServiceAccount**: All Jobs use `openshift-gitops-argocd-application-controller` (has cluster-admin + Gateway permissions)
 - **Static + Patch pattern**: Gateway and HTTPRoute are static YAML with placeholders, patched by Jobs
 - **Dynamic resources**: HostedZone, RecordSet, and AWS Secrets are fully created by Jobs (no static YAML)
@@ -2943,6 +3037,29 @@ location.reload(true);
 - **ArgoCD ignoreDifferences** (configured for both apps):
   - globex-mobile: `/spec/template/spec/initContainers/0/env/0/value`, `/spec/template/spec/containers/0/env/8/value`, `/spec/template/spec/containers/0/env/9/value`
   - globex-mobile-gateway: `/spec/template/spec/containers/0/env/1/value`
+
+### RHBK (Red Hat build of Keycloak) Deployment
+- **Separate Keycloak Instance**: Dedicated RHBK 26 deployment in `rhbk` namespace for Apicurio Studio
+- **API Version**: Uses `k8s.keycloak.org/v2alpha1` (RHBK 26 API), not old `keycloak.org/v1alpha1`
+- **Namespace-Scoped Operator**: RHBK operator installed in `rhbk` namespace only (not cluster-wide)
+- **CRITICAL - Namespace Label**: `argocd.argoproj.io/managed-by: openshift-gitops` required for automatic RBAC
+  - Without this label: Kuadrant/RHBK operators fail with permission errors
+  - Label triggers OpenShift GitOps to create necessary RoleBindings
+- **CRITICAL - proxy-headers Configuration**:
+  - Keycloak CR MUST include: `additionalOptions: [{name: proxy-headers, value: xforwarded}]`
+  - **Required** for OpenShift Route with edge TLS termination
+  - Without this: Admin console shows "somethingWentWrong" error
+  - Tells Keycloak to trust X-Forwarded-Proto/Host/For headers from OpenShift Router
+  - OpenShift Router terminates TLS at edge, forwards HTTP to Keycloak pod
+  - Keycloak needs to know original request was HTTPS for CORS/redirects to work
+- **PostgreSQL Database**: External PostgreSQL for production-like persistence (not embedded H2)
+- **Hostname Patching**: Uses same Job pattern as Gateway/HTTPRoute (placeholder → actual domain)
+- **Apicurio Realm**:
+  - 2 OAuth clients: `apicurio-api` (bearer-only with secret), `apicurio-studio` (public with PKCE)
+  - RHBK 26 compliant: `implicitFlowEnabled` removed, PKCE enforced with S256
+  - `sslRequired: external` (not "none" like RH-SSO 7.6)
+- **ArgoCD Application**: Separate Application (`application-rhbk.yaml`) in `solution-patterns-connectivity-link` project
+- **Admin Access**: `https://keycloak-rhbk.apps.<cluster-domain>` (credentials in Secret `keycloak-initial-admin`)
 
 ### Security and Demo Secrets
 - **⚠️ DEMO SECRETS IN GIT**: This repository contains hardcoded secrets in 2 files:
