@@ -14,8 +14,8 @@ spec:
       name: postgres-db
       key: POSTGRES_USER
     passwordSecret:
-      name: keycloak-db-password
-      key: password
+      name: postgres-db
+      key: POSTGRES_PASSWORD
   hostname:
     hostname: keycloak.placeholder
   http:
