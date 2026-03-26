@@ -2,15 +2,15 @@ apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 
 resources:
-  - ../base/cluster-clusterissuer-prod-web-lets-encrypt.yaml
-  - ../base/cluster-ns-ingress-gateway.yaml
-  - ../base/ingress-gateway-authpolicy-prod-web-deny-all.yaml
-  - ../base/ingress-gateway-dnspolicy-prod-web.yaml
-  - ../base/ingress-gateway-gateway-prod-web.yaml
-  - ../base/ingress-gateway-podmonitor-istio-proxies.yaml
-  - ../base/ingress-gateway-ratelimitpolicy-prod-web.yaml
-  - ../base/ingress-gateway-service-prod-web-metrics-proxy.yaml
-  - ../base/ingress-gateway-servicemonitor-prod-web.yaml
-  - ../base/ingress-gateway-tlspolicy-prod-web.yaml
-  - ../base/openshift-gitops-job-aws-credentials.yaml
-  - ../base/openshift-gitops-job-gateway-prod-web.yaml
+  - cluster-clusterissuer-prod-web-lets-encrypt.yaml
+  - cluster-ns-ingress-gateway.yaml
+  - ingress-gateway-authpolicy-prod-web-deny-all.yaml
+  - ingress-gateway-dnspolicy-prod-web.yaml
+  - ingress-gateway-gateway-prod-web.yaml
+  - ingress-gateway-podmonitor-istio-proxies.yaml
+  - ingress-gateway-ratelimitpolicy-prod-web.yaml
+  - ingress-gateway-service-prod-web-metrics-proxy.yaml
+  - ingress-gateway-servicemonitor-prod-web.yaml
+  - ingress-gateway-tlspolicy-prod-web.yaml
+  - openshift-gitops-job-aws-credentials.yaml
+  - openshift-gitops-job-gateway-prod-web.yaml
