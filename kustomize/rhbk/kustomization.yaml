@@ -1,0 +1,13 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+  - cluster-ns-rhbk.yaml
+  - rhbk-operatorgroup.yaml
+  - rhbk-subscription-rhbk-operator.yaml
+  - rhbk-secret-postgres-db.yaml
+  - rhbk-deployment-postgres-db.yaml
+  - rhbk-service-postgres-db.yaml
+  - rhbk-secret-keycloak-db-password.yaml
+  - rhbk-keycloak.yaml
+  - rhbk-keycloakrealmimport-apicurio.yaml
