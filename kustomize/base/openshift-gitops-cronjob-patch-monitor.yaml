@@ -40,7 +40,7 @@ spec:
                   ROOT_DOMAIN=$(echo "${BASE_DOMAIN}" | sed 's/^[^.]*\.//')
 
                   # Check Gateway hostname
-                  echo "[1/4] Checking Gateway prod-web hostname..."
+                  echo "[1/2] Checking Gateway prod-web hostname..."
                   GATEWAY_HOSTNAME=$(oc get gateway prod-web -n ingress-gateway -o jsonpath='{.spec.listeners[0].hostname}' 2>/dev/null || echo "")
                   if [[ "$GATEWAY_HOSTNAME" == *"placeholder"* ]]; then
                     echo "  ⚠️  Gateway has placeholder: $GATEWAY_HOSTNAME"
@@ -50,13 +50,15 @@ spec:
                     ]"
                     echo "  ✅ Gateway patched"
                     NEEDS_PATCH=1
+                  elif [[ -z "$GATEWAY_HOSTNAME" ]]; then
+                    echo "  ℹ️  Gateway not found (may not be deployed yet)"
                   else
                     echo "  ✓ Gateway OK: $GATEWAY_HOSTNAME"
                   fi
                   echo ""
 
                   # Check echo-api HTTPRoute hostname
-                  echo "[2/4] Checking echo-api HTTPRoute hostname..."
+                  echo "[2/2] Checking echo-api HTTPRoute hostname..."
                   ECHO_HOSTNAME=$(oc get httproute echo-api -n echo-api -o jsonpath='{.spec.hostnames[0]}' 2>/dev/null || echo "")
                   if [[ "$ECHO_HOSTNAME" == *"placeholder"* ]]; then
                     echo "  ⚠️  HTTPRoute has placeholder: $ECHO_HOSTNAME"
@@ -66,54 +68,10 @@ spec:
                     ]"
                     echo "  ✅ HTTPRoute patched"
                     NEEDS_PATCH=1
+                  elif [[ -z "$ECHO_HOSTNAME" ]]; then
+                    echo "  ℹ️  HTTPRoute not found (may not be deployed yet)"
                   else
                     echo "  ✓ HTTPRoute OK: $ECHO_HOSTNAME"
-                  fi
-                  echo ""
-
-                  # Check globex-mobile-gateway AuthPolicy
-                  echo "[3/4] Checking globex-mobile-gateway AuthPolicy issuerUrl..."
-                  ISSUER_URL=$(oc get authpolicy globex-mobile-gateway -n globex-apim-user1 -o jsonpath='{.spec.rules.authentication.keycloak-users.jwt.issuerUrl}' 2>/dev/null || echo "")
-                  if [[ "$ISSUER_URL" == *"placeholder"* ]]; then
-                    echo "  ⚠️  AuthPolicy has placeholder: $ISSUER_URL"
-                    APPS_DOMAIN=$(oc get ingresscontroller default -n openshift-ingress-operator -o jsonpath='{.status.domain}')
-                    ISSUER_URL_FIXED="https://keycloak-keycloak.${APPS_DOMAIN}/realms/globex-user1"
-                    echo "  → Patching to: ${ISSUER_URL_FIXED}"
-                    oc patch authpolicy globex-mobile-gateway -n globex-apim-user1 --type=json -p="[
-                      {\"op\": \"replace\", \"path\": \"/spec/rules/authentication/keycloak-users/jwt/issuerUrl\", \"value\": \"${ISSUER_URL_FIXED}\"}
-                    ]"
-                    echo "  ✅ AuthPolicy patched"
-                    NEEDS_PATCH=1
-                  else
-                    echo "  ✓ AuthPolicy OK: $ISSUER_URL"
-                  fi
-                  echo ""
-
-                  # Check globex-mobile deployment
-                  echo "[4/4] Checking globex-mobile deployment env vars..."
-                  SSO_AUTHORITY=$(oc get deployment globex-mobile -n globex-apim-user1 -o jsonpath='{.spec.template.spec.containers[0].env[?(@.name=="SSO_AUTHORITY")].value}' 2>/dev/null || echo "")
-                  if [[ "$SSO_AUTHORITY" == *"placeholder"* ]]; then
-                    echo "  ⚠️  Deployment has placeholder values"
-                    echo "  → Running globex-env patching..."
-
-                    APPS_DOMAIN=$(oc get ingresscontroller default -n openshift-ingress-operator -o jsonpath='{.status.domain}')
-                    KEYCLOAK_URL="https://keycloak-keycloak.${APPS_DOMAIN}/realms/globex-user1"
-                    LOGOUT_URI="https://globex-mobile-globex-apim-user1.${APPS_DOMAIN}/home"
-
-                    oc patch deployment globex-mobile -n globex-apim-user1 --type=json -p="[
-                      {\"op\": \"replace\", \"path\": \"/spec/template/spec/initContainers/0/env/0/value\", \"value\": \"${KEYCLOAK_URL}\"},
-                      {\"op\": \"replace\", \"path\": \"/spec/template/spec/containers/0/env/9/value\", \"value\": \"${KEYCLOAK_URL}\"},
-                      {\"op\": \"replace\", \"path\": \"/spec/template/spec/containers/0/env/10/value\", \"value\": \"${LOGOUT_URI}\"}
-                    ]"
-
-                    oc patch deployment globex-mobile-gateway -n globex-apim-user1 --type=json -p="[
-                      {\"op\": \"replace\", \"path\": \"/spec/template/spec/containers/0/env/1/value\", \"value\": \"${KEYCLOAK_URL}\"}
-                    ]"
-
-                    echo "  ✅ Deployments patched"
-                    NEEDS_PATCH=1
-                  else
-                    echo "  ✓ Deployments OK"
                   fi
                   echo ""
 

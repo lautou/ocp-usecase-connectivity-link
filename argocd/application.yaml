@@ -14,27 +14,6 @@ spec:
     path: kustomize/overlays/default
   destination:
     server: https://kubernetes.default.svc
-  ignoreDifferences:
-    - group: kuadrant.io
-      kind: AuthPolicy
-      name: globex-mobile-gateway
-      namespace: globex-apim-user1
-      jsonPointers:
-        - /spec/rules/authentication/keycloak-users/jwt/issuerUrl
-    - group: apps
-      kind: Deployment
-      name: globex-mobile
-      namespace: globex-apim-user1
-      jsonPointers:
-        - /spec/template/spec/initContainers/0/env/0/value
-        - /spec/template/spec/containers/0/env/9/value
-        - /spec/template/spec/containers/0/env/10/value
-    - group: apps
-      kind: Deployment
-      name: globex-mobile-gateway
-      namespace: globex-apim-user1
-      jsonPointers:
-        - /spec/template/spec/containers/0/env/1/value
   syncPolicy:
     automated:
       prune: true
