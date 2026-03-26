@@ -5,6 +5,9 @@ resources:
   # Namespace
   - cluster-ns-apicurio.yaml
 
+  # RBAC
+  - apicurio-rolebinding-argocd.yaml
+
   # PostgreSQL Database
   - apicurio-secret-postgres-db.yaml
   - apicurio-deployment-postgres-db.yaml
