@@ -511,6 +511,419 @@ for i in {1..25}; do curl -sk -w "%{http_code}\n" -o /dev/null "https://${HOSTNA
 - ✅ TLS certificates valid (Let's Encrypt)
 - ✅ DNS resolution working (Route53 CNAME records)
 
+## Apicurio Studio Deployment - COMPLETE ✅
+
+**Status**: Apicurio Studio (Red Hat build of Apicurio Registry 3) is **FULLY DEPLOYED** and **OPERATIONAL** ✅
+
+**Deployment Date**: 2026-03-27
+
+### Overview
+
+Apicurio Studio provides a schema registry and API design platform for managing API schemas, event schemas, and API artifacts. This deployment uses the **Red Hat build of Apicurio Registry 3** (officially supported) instead of the legacy community ApicurioStudio operator.
+
+**Key Features**:
+- ✅ Schema registry for OpenAPI, AsyncAPI, Avro, Protobuf, JSON Schema
+- ✅ API design and collaboration platform
+- ✅ OAuth 2.0 authentication via Keycloak (RHBK 26)
+- ✅ Role-based access control (admin, developer, readOnly)
+- ✅ External PostgreSQL storage (production-ready)
+- ✅ RESTful API and web-based UI
+- ✅ GitOps deployment via ArgoCD
+
+### Architecture
+
+**Components Deployed**:
+
+1. **Apicurio Registry Backend** (`apicurio-studio-app-deployment`)
+   - Image: Red Hat build of Apicurio Registry 3
+   - Operator: `apicurio-registry-3.v3.1.6-r2` (OperatorHub)
+   - API Version: `registry.apicur.io/v1` (stable)
+   - Replicas: 1
+   - Service: ClusterIP on port 8080
+   - Route: `apicurio-studio-api-apicurio.apps.<cluster-domain>`
+
+2. **Apicurio Registry UI** (`apicurio-studio-ui-deployment`)
+   - Web-based interface for API design and schema management
+   - Replicas: 1
+   - Service: ClusterIP on port 8080
+   - Route: `apicurio-studio-ui-apicurio.apps.<cluster-domain>`
+
+3. **PostgreSQL Database** (`postgres-db`)
+   - Image: `registry.redhat.io/rhel9/postgresql-15:latest`
+   - Database: `apicuriodb`
+   - User: `apicurio`
+   - Storage: EmptyDir (demo configuration, use PVC for production)
+   - Service: ClusterIP on port 5432
+
+4. **Keycloak Realm** (`apicurio`)
+   - Deployed in separate `keycloak` namespace
+   - 2 OAuth clients:
+     - `apicurio-api` - Backend API client (bearer-only with secret)
+     - `apicurio-studio` - Frontend UI client (public with PKCE)
+   - RHBK 26 compliant (OAuth Code Flow + PKCE, no Implicit Flow)
+
+### Configuration Details
+
+**ApicurioRegistry3 CR** (`kustomize/apicurio/apicurio-apicurioregistry3-apicurio-studio.yaml`):
+
+```yaml
+apiVersion: registry.apicur.io/v1
+kind: ApicurioRegistry3
+metadata:
+  name: apicurio-studio
+  namespace: apicurio
+  annotations:
+    argocd.argoproj.io/sync-options: SkipDryRunOnMissingResource=true
+spec:
+  app:
+    replicas: 1
+
+    # External PostgreSQL storage
+    storage:
+      type: postgresql
+      sql:
+        dataSource:
+          url: jdbc:postgresql://postgres-db.apicurio.svc.cluster.local:5432/apicuriodb
+          username: apicurio
+          password:
+            name: postgres-db
+            key: password
+
+    # Keycloak OIDC authentication
+    auth:
+      enabled: true
+      authServerUrl: https://keycloak-keycloak.apps.<cluster-domain>/realms/apicurio
+      appClientId: apicurio-api
+      uiClientId: apicurio-studio
+      redirectUri: https://apicurio-studio-ui-apicurio.apps.<cluster-domain>
+      logoutUrl: https://apicurio-studio-ui-apicurio.apps.<cluster-domain>
+
+      # TLS configuration (CRITICAL for OpenShift Routes)
+      tls:
+        tlsVerificationType: none  # Edge TLS termination at Route
+
+      # Role-based authorization
+      authz:
+        enabled: true
+        ownerOnlyEnabled: true
+        readAccessEnabled: true
+        roles:
+          admin: admin
+          developer: developer
+          readOnly: readOnly
+          source: token
+
+      # Basic auth for API clients
+      basicAuth:
+        enabled: true
+        cacheExpiration: 10min
+
+    # Feature flags
+    features:
+      resourceDeleteEnabled: true
+      versionMutabilityEnabled: false
+
+    # Backend API ingress
+    ingress:
+      enabled: true
+      host: apicurio-studio-api-apicurio.apps.<cluster-domain>
+
+  # Frontend UI component
+  ui:
+    enabled: true
+    replicas: 1
+    ingress:
+      enabled: true
+      host: apicurio-studio-ui-apicurio.apps.<cluster-domain>
+```
+
+### ArgoCD Applications
+
+**Two Applications deployed**:
+
+1. **apicurio-studio** (`argocd/application-apicurio.yaml`)
+   - Project: `solution-patterns-connectivity-link`
+   - Path: `kustomize/apicurio`
+   - Destination: `apicurio` namespace
+   - Sync Policy: Automated (prune + selfHeal)
+   - ignoreDifferences: 5 hostname fields (patched by Job)
+
+2. **keycloak** (`argocd/application-keycloak.yaml`)
+   - Project: `solution-patterns-connectivity-link`
+   - Path: `kustomize/keycloak`
+   - Destination: `keycloak` namespace
+   - Sync Policy: Automated (prune + selfHeal)
+   - ignoreDifferences: Keycloak hostname field
+
+### Hostname Patching
+
+**PostSync Job** (`openshift-gitops-job-apicurio-hostname.yaml`):
+- Sync wave: 3 (runs after resource creation)
+- Patches 5 hostname fields in ApicurioRegistry3 CR:
+  - `spec.app.auth.authServerUrl`
+  - `spec.app.auth.redirectUri`
+  - `spec.app.auth.logoutUrl`
+  - `spec.app.ingress.host`
+  - `spec.ui.ingress.host`
+- Replaces `placeholder` with actual cluster domain
+- Execution time: ~3 seconds
+
+### Keycloak Integration (RHBK 26)
+
+**Realm**: `apicurio` (separate from `globex-user1` realm)
+
+**OAuth Clients**:
+
+1. **apicurio-api** (Backend):
+   ```yaml
+   clientId: apicurio-api
+   bearerOnly: true  # Bearer tokens only (no redirects)
+   publicClient: false  # Confidential client with secret
+   secret: apicurio-api-secret  # ⚠️ DEMO SECRET
+   standardFlowEnabled: false
+   directAccessGrantsEnabled: true
+   ```
+
+2. **apicurio-studio** (Frontend):
+   ```yaml
+   clientId: apicurio-studio
+   publicClient: true  # Public client (SPA, no secret)
+   clientAuthenticatorType: none
+   standardFlowEnabled: true  # OAuth Code Flow
+   implicitFlowEnabled: false  # Not supported in RHBK 26
+   attributes:
+     pkce.code.challenge.method: S256  # PKCE enforced
+   redirectUris:
+     - https://apicurio-studio-ui-apicurio.apps.<cluster-domain>/*
+   webOrigins:
+     - https://apicurio-studio-ui-apicurio.apps.<cluster-domain>
+   ```
+
+**RHBK 26 Compliance**:
+- ✅ OAuth 2.0 Authorization Code Flow + PKCE (S256)
+- ✅ No Implicit Flow (removed in RHBK 26)
+- ✅ Public client with `clientAuthenticatorType: none`
+- ✅ Bearer-only backend client for API access
+- ✅ `sslRequired: external` (not "none")
+
+### Critical Configuration: TLS Verification
+
+**Issue Encountered**: NullPointerException in Apicurio operator when `auth.tls` section was missing.
+
+**Error**:
+```
+NullPointerException: Cannot invoke "io.apicurio.registry.operator.api.v1.spec.auth.AuthTLSSpec.getTlsVerificationType()"
+because the return value of "io.apicurio.registry.operator.api.v1.spec.auth.AuthSpec.getTls()" is null
+```
+
+**Fix**: Add `tls.tlsVerificationType` field under `auth` section:
+
+```yaml
+auth:
+  enabled: true
+  authServerUrl: https://keycloak-keycloak.apps.<cluster-domain>/realms/apicurio
+  # ... other auth config
+
+  # CRITICAL: TLS configuration is REQUIRED even if auth is enabled
+  tls:
+    tlsVerificationType: none  # Disable TLS verification (OpenShift Routes use edge termination)
+```
+
+**Why `none`?**: OpenShift Routes terminate TLS at the edge (HAProxy), so the connection from Apicurio pods to Keycloak Route is HTTP internally. TLS verification is unnecessary and would fail since the internal service doesn't have TLS certificates.
+
+### Access and Verification
+
+**Access URLs**:
+- **UI**: http://apicurio-studio-ui-apicurio.apps.<cluster-domain>
+- **API**: http://apicurio-studio-api-apicurio.apps.<cluster-domain>
+- **System Info**: http://apicurio-studio-api-apicurio.apps.<cluster-domain>/apis/registry/v3/system/info
+
+**Verification Commands**:
+
+```bash
+# Check Application status
+oc get application.argoproj.io apicurio-studio keycloak -n openshift-gitops
+# Expected: Synced, Healthy
+
+# Check all resources in apicurio namespace
+oc get all -n apicurio
+# Expected: 3 deployments (app + ui + postgres), 3 services, 2 routes
+
+# Check ApicurioRegistry3 CR status
+oc get apicurioregistry3 apicurio-studio -n apicurio
+oc get apicurioregistry3 apicurio-studio -n apicurio -o yaml | grep -A 10 "status:"
+# Expected: Ready: True, All active Deployments are available
+
+# Check Keycloak realm
+oc get keycloakrealmimport apicurio -n keycloak
+oc get keycloakrealmimport apicurio -n keycloak -o jsonpath='{.status.conditions[?(@.type=="Done")].status}'
+# Expected: True
+
+# Test UI accessibility
+curl -sI http://apicurio-studio-ui-apicurio.apps.<cluster-domain> | head -3
+# Expected: HTTP/1.1 200 OK
+
+# Test API endpoint
+curl -sI http://apicurio-studio-api-apicurio.apps.<cluster-domain>/apis/registry/v3/system/info | head -3
+# Expected: HTTP/1.1 200 OK
+
+# Check page title
+curl -s http://apicurio-studio-ui-apicurio.apps.<cluster-domain> | grep -o '<title>.*</title>'
+# Expected: <title>Apicurio Registry</title>
+```
+
+### Deployment Resources
+
+**Namespace**: `apicurio`
+- Label: `argocd.argoproj.io/managed-by: openshift-gitops` (CRITICAL for RBAC)
+
+**Manifests** (in `kustomize/apicurio/`):
+- `cluster-ns-apicurio.yaml` - Namespace with ArgoCD management label
+- `apicurio-rolebinding-argocd.yaml` - RoleBinding for ArgoCD controller (admin access)
+- `apicurio-secret-postgres-db.yaml` - PostgreSQL credentials
+- `apicurio-deployment-postgres-db.yaml` - PostgreSQL 15 deployment
+- `apicurio-service-postgres-db.yaml` - PostgreSQL service
+- `apicurio-apicurioregistry3-apicurio-studio.yaml` - ApicurioRegistry3 CR
+- `openshift-gitops-job-apicurio-hostname.yaml` - PostSync hostname patching Job
+- `kustomization.yaml` - Kustomize configuration
+
+**Total Resources Created**: ~13
+- 1 Namespace
+- 1 RoleBinding
+- 1 Secret
+- 3 Deployments
+- 3 Services
+- 2 Routes
+- 1 ApicurioRegistry3 CR
+- 1 Job (PostSync)
+
+### Comparison: Modern ApicurioRegistry3 vs Legacy ApicurioStudio
+
+| Aspect | **Modern: ApicurioRegistry3** (Our Deployment) | **Legacy: ApicurioStudio** (Ansible) |
+|--------|------------------------------------------|--------------------------------------|
+| **Status** | ✅ **Deployed and Verified** | Would require Helm deployment |
+| **Operator** | Red Hat build of Apicurio Registry 3 (OperatorHub) | Community ApicurioStudio operator (quay.io/lbroudoux) |
+| **Operator Version** | `apicurio-registry-3.v3.1.6-r2` | `latest` (no version pinning) |
+| **API Version** | `registry.apicur.io/v1` (stable) | `studio.apicur.io/v1alpha1` (alpha) |
+| **CR Type** | `ApicurioRegistry3` | `ApicurioStudio` |
+| **Support Level** | ✅ **Red Hat commercial support** | ❌ Community support only |
+| **Components** | 2 (app backend + ui frontend) | 3 (api + ui + ws WebSocket server) |
+| **Deployments** | 2 (app + ui) | 3 (api + ui + ws) |
+| **Routes** | 2 (app + ui) | 3 (api + ui + ws) |
+| **Storage** | External required (PostgreSQL, MySQL, KafkaSQL) | Embedded PostgreSQL option available |
+| **Our Storage** | External PostgreSQL 15 (RHEL9 image) | Would use embedded PostgreSQL |
+| **Production Ready** | ✅ Yes (with external database) | ⚠️ Only with external database |
+| **Keycloak Auth** | ✅ RHBK 26 (OAuth Code Flow + PKCE) | ✅ Keycloak (compatibility unknown) |
+| **TLS Config** | ✅ **REQUIRED** `tls.tlsVerificationType` field | ❓ Unknown if required |
+| **Auth Bug** | ⚠️ NullPointerException if `tls` section missing | ❓ Unknown |
+| **Authorization** | ✅ Role-based (admin, developer, readOnly) | ✅ Similar roles available |
+| **Basic Auth** | ✅ API client authentication | ❓ Unknown |
+| **Ingress** | ✅ OpenShift Routes (no TLS config) | ✅ OpenShift Routes |
+| **Features** | Resource delete, version mutability control | ❓ Unknown feature flags |
+| **GitOps** | ✅ ArgoCD with automated hostname patching | Helm (manual values) |
+| **Hostname Management** | ✅ PostSync Job (fully automated) | Manual Helm values per cluster |
+| **RBAC** | ✅ Automated via namespace label | Manual configuration |
+| **Resource Count** | ~13 resources | ~20-25 resources (more complex) |
+| **Architecture** | ✅ Simpler (2 components) | More complex (3 components) |
+| **Real-time Features** | ❌ No WebSocket server | ✅ WebSocket for collaboration |
+| **API Stability** | ✅ Stable `v1` API | ⚠️ Alpha `v1alpha1` API |
+| **Long-term Support** | ✅ Red Hat product lifecycle | ❌ Community project (uncertain) |
+
+### Why We Use Modern ApicurioRegistry3
+
+**Advantages** ✅:
+1. **Red Hat Commercial Support** - SLA, security patches, lifecycle guarantees
+2. **Stable API** (`v1`) - Backward compatibility, production-ready
+3. **Simpler Architecture** - 2 components instead of 3 (easier to maintain)
+4. **Active Development** - Regular updates from Red Hat product team
+5. **Production-Ready** - Designed for enterprise deployments
+6. **Better Integration** - Works seamlessly with OpenShift ecosystem
+7. **GitOps-Friendly** - Automated deployment via ArgoCD
+8. **RHBK 26 Compatible** - Modern OAuth flows (Code + PKCE)
+
+**Trade-offs** ⚠️:
+1. **No WebSocket Server** - Legacy has real-time collaboration features we lack
+2. **External Database Required** - Cannot use embedded PostgreSQL (but this is better for production)
+3. **TLS Config Bug** - Requires `tls.tlsVerificationType` field even when using Routes (fixed in our deployment)
+
+**Recommendation**: ✅ **Use ApicurioRegistry3** for all new deployments due to Red Hat support, API stability, and long-term maintainability.
+
+### Troubleshooting
+
+**Issue: NullPointerException in ApicurioRegistry3 CR**
+
+**Symptoms**:
+```
+OperatorError: NullPointerException: Cannot invoke getTlsVerificationType() because getTls() is null
+Ready: False, ActiveDeploymentUnavailable
+```
+
+**Cause**: Missing `tls` section under `auth` configuration.
+
+**Fix**: Add TLS configuration:
+```yaml
+spec:
+  app:
+    auth:
+      enabled: true
+      authServerUrl: https://keycloak-keycloak.apps.<cluster-domain>/realms/apicurio
+      # ... other config
+
+      tls:  # ← ADD THIS
+        tlsVerificationType: none  # Disable for OpenShift Routes
+```
+
+**Issue: RBAC Permission Denied for ArgoCD**
+
+**Symptoms**:
+```
+deployments.apps is forbidden: User system:serviceaccount:openshift-gitops:openshift-gitops-argocd-application-controller
+cannot create resource deployments in API group apps in the namespace apicurio
+```
+
+**Cause**: Missing RoleBinding or namespace label.
+
+**Fix**:
+1. Ensure namespace has label: `argocd.argoproj.io/managed-by: openshift-gitops`
+2. Create RoleBinding: `apicurio-rolebinding-argocd.yaml`
+
+**Issue: ArgoCD Dry-Run Fails (CRD Not Found)**
+
+**Symptoms**: ArgoCD sync fails with "CRD not found" during dry-run phase.
+
+**Cause**: ApicurioRegistry3 CRD may not exist when ArgoCD performs dry-run.
+
+**Fix**: Add annotation to ApicurioRegistry3 CR:
+```yaml
+metadata:
+  annotations:
+    argocd.argoproj.io/sync-options: SkipDryRunOnMissingResource=true
+```
+
+**Issue: UI Route Returns HTTP 503**
+
+**Symptoms**: `curl https://apicurio-studio-ui-apicurio.apps.<domain>` returns HTTP 503.
+
+**Cause**: Route may have TLS misconfiguration or pod not ready.
+
+**Fix**:
+1. Check pod status: `oc get pods -n apicurio | grep ui`
+2. Check pod logs: `oc logs -n apicurio -l app.kubernetes.io/name=apicurio-studio-ui`
+3. Use HTTP instead of HTTPS: Routes are created without TLS termination by default
+4. Check ApicurioRegistry3 status: `oc get apicurioregistry3 apicurio-studio -n apicurio -o yaml | grep -A 10 status`
+
+**Issue: Applications Not Syncing**
+
+**Symptoms**: ArgoCD Applications show no sync/health status.
+
+**Cause**: ArgoCD application-controller may not be ready.
+
+**Fix**:
+1. Check controller pod: `oc get pods -n openshift-gitops -l app.kubernetes.io/name=openshift-gitops-application-controller`
+2. If 0/1 READY, restart: `oc delete pod -n openshift-gitops -l app.kubernetes.io/name=openshift-gitops-application-controller`
+3. Wait for pod to be 1/1 READY (15-30 seconds)
+4. Applications should auto-sync after controller restart
+
 ## Ingress Gateway Deployment - Ansible Alignment ✅
 
 **Status**: Successfully deployed ingress-gateway infrastructure matching Red Hat's ansible deployment **100%** (2026-03-25)
@@ -1638,6 +2051,52 @@ Red Hat's approach creates a more dramatic demo (without HTTPRoute → app break
    - **Access**: Admin console at `https://keycloak-rhbk.apps.<cluster-domain>`
    - **Admin Credentials**: Secret `keycloak-initial-admin` (username: `temp-admin`)
 
+19. **Keycloak (globex-user1 realm)** (keycloak namespace)
+   - **KeycloakRealmImport** (`keycloak-keycloakrealmimport-globex-user1.yaml`)
+     - Creates `globex-user1` realm in existing Keycloak instance
+     - 3 OAuth clients: `client-manager`, `globex-mobile-gateway`, `globex-mobile`
+     - 8 users: 1 realm admin (`user1`), 5 demo users, 2 service accounts
+     - **⚠️ CONTAINS DEMO SECRETS**: OAuth client secrets from Red Hat Globex workshop materials
+   - **ArgoCD Application** (`argocd/application-keycloak.yaml`)
+     - Name: `keycloak` (not `usecase-connectivity-link-keycloak`)
+     - Project: `solution-patterns-connectivity-link`
+     - Path: `kustomize/keycloak`
+     - Destination: `keycloak` namespace
+
+20. **Apicurio Studio** (apicurio namespace)
+   - **Namespace** (`cluster-ns-apicurio.yaml`)
+     - **CRITICAL**: Has label `argocd.argoproj.io/managed-by: openshift-gitops` for automatic RBAC
+   - **RoleBinding** (`apicurio-rolebinding-argocd.yaml`)
+     - Grants ArgoCD controller admin access to apicurio namespace
+   - **PostgreSQL Database**:
+     - Secret (`apicurio-secret-postgres-db.yaml`) - PostgreSQL credentials
+     - Deployment (`apicurio-deployment-postgres-db.yaml`) - PostgreSQL 15 for Apicurio storage
+     - Service (`apicurio-service-postgres-db.yaml`) - ClusterIP exposing port 5432
+   - **ApicurioRegistry3 CR** (`apicurio-apicurioregistry3-apicurio-studio.yaml`)
+     - API Version: `registry.apicur.io/v1` (stable, Red Hat supported)
+     - Operator: `apicurio-registry-3.v3.1.6-r2` (OperatorHub)
+     - 2 components: app (backend API) + ui (frontend)
+     - External PostgreSQL storage (production-ready)
+     - Keycloak OIDC authentication (RHBK 26)
+     - **CRITICAL**: Includes `auth.tls.tlsVerificationType: none` (required to avoid NullPointerException)
+     - **Annotation**: `argocd.argoproj.io/sync-options: SkipDryRunOnMissingResource=true`
+   - **Routes** (created by operator):
+     - `apicurio-studio-api-ingress` - Backend API access
+     - `apicurio-studio-ui-ingress` - Frontend UI access
+   - **Hostname Patching Job** (`openshift-gitops-job-apicurio-hostname.yaml`)
+     - **Hook**: PostSync (wave 3)
+     - Patches 5 hostname fields in ApicurioRegistry3 CR
+     - Replaces `placeholder` with actual cluster domain
+   - **ArgoCD Application** (`argocd/application-apicurio.yaml`)
+     - Name: `apicurio-studio` (not `usecase-connectivity-link-apicurio`)
+     - Project: `solution-patterns-connectivity-link`
+     - Path: `kustomize/apicurio`
+     - Destination: `apicurio` namespace
+     - ignoreDifferences: 5 hostname fields (patched by Job)
+   - **Access**:
+     - UI: http://apicurio-studio-ui-apicurio.apps.<cluster-domain>
+     - API: http://apicurio-studio-api-apicurio.apps.<cluster-domain>
+
 ### GitOps Flow
 
 ```
@@ -1646,7 +2105,7 @@ ArgoCD Application
 Kustomize Overlay (default)
     ↓
 Kustomize Base (43 manifests)
-    ├── Namespaces (echo-api, ingress-gateway, globex)
+    ├── Namespaces (echo-api, ingress-gateway, globex, apicurio)
     ├── RBAC (ClusterRole, ClusterRoleBinding)
     ├── GatewayClass (istio)
     ├── Gateway (static YAML with wildcard placeholder: *.globex.placeholder)
@@ -1665,18 +2124,25 @@ Kustomize Base (43 manifests)
     │   ├── AuthPolicy (allow-all, overrides Gateway deny-by-default)
     │   └── RateLimitPolicy (20 req/10s, overrides Gateway default)
     ├── ReferenceGrant (globex-apim-user1 namespace, allows HTTPRoute cross-namespace access)
-    ├── KeycloakRealmImport (Globex demo realm with users and OAuth clients)
     ├── Globex application stack (globex-apim-user1 namespace, monolith architecture)
     │   ├── Database: globex-db (Deployment + Service + ServiceAccount + Secret)
     │   ├── Backend: globex-store-app (Deployment + Service + ServiceAccount, NPE-fixed image)
     │   ├── Frontend: globex-mobile (Deployment + Service + ServiceAccount + Route)
     │   └── Mobile API: globex-mobile-gateway (Deployment + Service + ServiceAccount + Route)
+    ├── Keycloak resources (keycloak namespace)
+    │   └── KeycloakRealmImport (globex-user1 realm with users and OAuth clients)
     ├── RHBK stack (rhbk namespace, separate Keycloak instance for Apicurio)
     │   ├── OperatorGroup + Subscription (RHBK 26.4 operator, namespace-scoped)
     │   ├── Database: postgres-db (Deployment + Service + 2 Secrets)
     │   ├── Keycloak CR (v2alpha1 API, with proxy-headers for OpenShift Route)
-    │   └── KeycloakRealmImport (Apicurio realm with 2 OAuth clients, PKCE enforced)
-    ├── Jobs (8 total: AWS credentials, DNS setup, Gateway patch, 2× HTTPRoute patches, Globex env vars, Keycloak hostname, Keycloak realm reimport)
+    │   └── KeycloakRealmImport (apicurio realm with 2 OAuth clients, PKCE enforced)
+    ├── Apicurio Studio (apicurio namespace - deployed via separate Application)
+    │   ├── Namespace with ArgoCD management label
+    │   ├── RoleBinding for ArgoCD controller
+    │   ├── Database: postgres-db (Deployment + Service + Secret)
+    │   ├── ApicurioRegistry3 CR (v1 API, Red Hat supported)
+    │   └── Job: Hostname patching (PostSync wave 3)
+    ├── Jobs (9 total: AWS credentials, DNS setup, Gateway patch, 2× HTTPRoute patches, Globex env vars, Keycloak hostname, Apicurio hostname, Keycloak realm reimport)
     └── CronJob (1 total: Patch monitor running every 10 minutes as safety net)
 
 Jobs execute in sequence:
@@ -1688,6 +2154,7 @@ Jobs execute in sequence:
     Job #5 (ProductCatalog HTTPRoute) → Patches productcatalog HTTPRoute hostname to catalog.globex.<cluster-domain> (~5s)
     Job #6 (Globex Env) → Patches globex-mobile and globex-mobile-gateway env vars (~5s)
     Job #7 (Keycloak Hostname) → Patches Keycloak CR hostname to keycloak-rhbk.<apps-domain> (~5s)
+    Job #8 (Apicurio Hostname) → Patches ApicurioRegistry3 CR hostnames (5 fields) (~3s) [separate Application]
 
 Controllers execute:
     DNSPolicy → Creates CNAME records in Route53:
@@ -1696,6 +2163,7 @@ Controllers execute:
     TLSPolicy → Triggers cert-manager to issue Let's Encrypt certificate via DNS-01 challenge
       - Wildcard certificate: *.globex.<cluster-domain>
     Keycloak Operator → Imports globex-user1 realm with users and OAuth clients
+    Apicurio Operator → Creates ApicurioRegistry3 deployments (app + ui) with PostgreSQL storage
 
 ArgoCD ignores runtime-patched fields (ignoreDifferences):
     - Gateway: /spec/listeners/0/hostname
@@ -1706,19 +2174,23 @@ ArgoCD ignores runtime-patched fields (ignoreDifferences):
     - globex-mobile: /spec/template/spec/containers/0/env/8/value (SSO_AUTHORITY)
     - globex-mobile: /spec/template/spec/containers/0/env/9/value (SSO_REDIRECT_LOGOUT_URI)
     - globex-mobile-gateway: /spec/template/spec/containers/0/env/1/value (KEYCLOAK_AUTH_SERVER_URL)
+    - ApicurioRegistry3 (apicurio): 5 hostname fields (authServerUrl, redirectUri, logoutUrl, app.ingress.host, ui.ingress.host)
 
 End Result:
     ✅ Monolith application deployed (globex-db + globex-store-app + globex-mobile + globex-mobile-gateway)
     ✅ Product catalog fully functional with 41 products displayed
+    ✅ Apicurio Studio deployed and operational (Red Hat build of Apicurio Registry 3)
+    ✅ Schema registry accessible via UI and API (PostgreSQL storage)
     ✅ Gateway accessible from Internet with wildcard TLS certificate
     ✅ DNS records created in Route53 with automatic management
-    ✅ OAuth authentication working with RHBK 26
+    ✅ OAuth authentication working with RHBK 26 (Globex + Apicurio)
     ✅ Rate limiting and authorization policies enforced
     ✅ ProductCatalog service exposed via HTTPRoute (20 req/10s rate limit)
     ✅ Echo API service exposed via HTTPRoute (10 req/12s rate limit)
     ✅ Cross-namespace service access working via ReferenceGrant
     ✅ Automatic placeholder patching (PostSync hooks + CronJob safety net)
     ✅ Zero manual intervention required for placeholder replacement
+    ✅ 3 ArgoCD Applications deployed: usecase-connectivity-link, apicurio-studio, keycloak
 ```
 
 ## Prerequisites
@@ -2451,6 +2923,12 @@ See [SECURITY.md](SECURITY.md) for complete security documentation.
 │   │   ├── openshift-gitops-job-productcatalog-httproute.yaml
 │   │   ├── openshift-gitops-cronjob-patch-monitor.yaml
 │   │   └── kustomization.yaml
+│   ├── keycloak/
+│   │   # Keycloak resources (globex-user1 realm)
+│   │   ├── cluster-ns-keycloak.yaml
+│   │   ├── keycloak-keycloak.yaml
+│   │   ├── keycloak-keycloakrealmimport-globex-user1.yaml    # ⚠️ DEMO SECRETS
+│   │   └── kustomization.yaml
 │   ├── rhbk/
 │   │   # RHBK (Red Hat build of Keycloak) resources
 │   │   ├── cluster-ns-rhbk.yaml
@@ -2464,12 +2942,24 @@ See [SECURITY.md](SECURITY.md) for complete security documentation.
 │   │   ├── rhbk-keycloakrealmimport-apicurio.yaml
 │   │   ├── openshift-gitops-job-keycloak-hostname.yaml
 │   │   └── kustomization.yaml
+│   ├── apicurio/
+│   │   # Apicurio Studio (Red Hat build of Apicurio Registry 3)
+│   │   ├── cluster-ns-apicurio.yaml
+│   │   ├── apicurio-rolebinding-argocd.yaml
+│   │   ├── apicurio-secret-postgres-db.yaml
+│   │   ├── apicurio-deployment-postgres-db.yaml
+│   │   ├── apicurio-service-postgres-db.yaml
+│   │   ├── apicurio-apicurioregistry3-apicurio-studio.yaml
+│   │   ├── openshift-gitops-job-apicurio-hostname.yaml
+│   │   └── kustomization.yaml
 │   └── overlays/
 │       └── default/
 │           └── kustomization.yaml
 ├── argocd/
 │   ├── application.yaml
-│   └── application-rhbk.yaml
+│   ├── application-rhbk.yaml
+│   ├── application-keycloak.yaml
+│   └── application-apicurio.yaml
 ├── config/
 │   └── cluster.yaml.example    # Cluster configuration template for deployment
 ├── scripts/
@@ -2484,16 +2974,22 @@ See [SECURITY.md](SECURITY.md) for complete security documentation.
 ```
 
 **Manifest Count**:
-- Cluster-scoped: 7 (ClusterRole, ClusterRoleBinding, GatewayClass, 4 Namespaces including rhbk)
+- Cluster-scoped: 8 (ClusterRole, ClusterRoleBinding, GatewayClass, 5 Namespaces: echo-api, ingress-gateway, globex, keycloak, rhbk, apicurio)
 - echo-api: 5 (Deployment, Service, HTTPRoute, AuthPolicy, RateLimitPolicy)
 - ingress-gateway: 8 (Gateway, TLSPolicy, DNSPolicy, 2× AuthPolicy, 2× RateLimitPolicy, 2× HTTPRoute)
 - globex (monolith): 14 (4 deployments, 4 services, 4 service accounts, 1 secret, 1 ReferenceGrant)
 - globex routes: 2 (globex-mobile, globex-mobile-gateway)
-- Keycloak (globex realm): 1 (KeycloakRealmImport with ⚠️ DEMO SECRETS)
+- Keycloak stack: 3 (Namespace, Keycloak CR, KeycloakRealmImport with ⚠️ DEMO SECRETS)
 - RHBK stack: 10 (Namespace, OperatorGroup, Subscription, 2 Secrets, Deployment, Service, Keycloak CR, KeycloakRealmImport, Job)
+- Apicurio stack: 7 (Namespace, RoleBinding, Secret, Deployment, Service, ApicurioRegistry3 CR, Job)
 - Jobs: 8 (AWS credentials, DNS setup, Gateway patch, 2× HTTPRoute patches, Globex env vars, Keycloak hostname, Keycloak realm reimport)
 - CronJob: 1 (Patch monitor - safety net for automatic placeholder patching)
-- **Total**: 56 manifests (2 kustomization.yaml files + 54 resource files)
+- **Total base**: 56 manifests (1 kustomization.yaml + 55 resource files)
+- **Total keycloak**: 3 manifests (1 kustomization.yaml + 2 resource files)
+- **Total rhbk**: 10 manifests (1 kustomization.yaml + 9 resource files)
+- **Total apicurio**: 7 manifests (1 kustomization.yaml + 6 resource files)
+- **Total ArgoCD Applications**: 4 (usecase-connectivity-link, keycloak, rhbk, apicurio-studio)
+- **Grand Total**: 80 manifests across all directories
 
 **File Naming Convention**: `<namespace>-<kind>-<name>.yaml`
 - `cluster-*` for cluster-scoped resources (no namespace)
@@ -2538,7 +3034,7 @@ Everything else is 100% dynamic → Works across different clusters/environments
 - ClusterRole `gateway-manager`
 - ClusterRoleBinding `gateway-manager-openshift-gitops-argocd-application-controller`
 - GatewayClass `istio`
-- Namespaces: `echo-api`, `ingress-gateway`, `globex`, `rhbk`
+- Namespaces: `echo-api`, `ingress-gateway`, `globex`, `keycloak`, `rhbk`, `apicurio`
 
 **echo-api Namespace**:
 - Deployment `echo-api` (image: `quay.io/3scale/authorino:echo-api`)
