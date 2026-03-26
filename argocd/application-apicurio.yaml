@@ -1,7 +1,7 @@
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
-  name: usecase-connectivity-link-apicurio
+  name: apicurio-studio
   namespace: openshift-gitops
   finalizers:
     - resources-finalizer.argocd.argoproj.io

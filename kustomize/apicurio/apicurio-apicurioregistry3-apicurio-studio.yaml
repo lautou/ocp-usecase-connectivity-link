@@ -3,6 +3,8 @@ kind: ApicurioRegistry3
 metadata:
   name: apicurio-studio
   namespace: apicurio
+  annotations:
+    argocd.argoproj.io/sync-options: SkipDryRunOnMissingResource=true
 spec:
   app:
     replicas: 1
