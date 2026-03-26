@@ -33,18 +33,23 @@ spec:
               echo "=========================================="
               echo ""
 
-              # Get cluster domain
+              # Get cluster domain and calculate root domain (matches ingress-gateway pattern)
               BASE_DOMAIN=$(oc get dns cluster -o jsonpath='{.spec.baseDomain}')
-              echo "Cluster domain: ${BASE_DOMAIN}"
+              ROOT_DOMAIN=$(echo "${BASE_DOMAIN}" | sed 's/^[^.]*\.//')
+              HOSTNAME="echo.globex.${ROOT_DOMAIN}"
+
+              echo "Cluster base domain: ${BASE_DOMAIN}"
+              echo "Root domain: ${ROOT_DOMAIN}"
+              echo "Target hostname: ${HOSTNAME}"
 
               # Patch HTTPRoute hostname
               echo "Patching HTTPRoute echo-api hostname..."
               oc patch httproute echo-api -n echo-api --type=json -p="[
-                {\"op\": \"replace\", \"path\": \"/spec/hostnames/0\", \"value\": \"echo.globex.${BASE_DOMAIN}\"}
+                {\"op\": \"replace\", \"path\": \"/spec/hostnames/0\", \"value\": \"${HOSTNAME}\"}
               ]"
 
               echo ""
               echo "=========================================="
               echo "✅ HTTPRoute setup completed!"
-              echo "Hostname: echo.globex.${BASE_DOMAIN}"
+              echo "Hostname: ${HOSTNAME}"
               echo "=========================================="

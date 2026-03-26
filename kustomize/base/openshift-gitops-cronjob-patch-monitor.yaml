@@ -37,15 +37,16 @@ spec:
 
                   NEEDS_PATCH=0
                   BASE_DOMAIN=$(oc get dns cluster -o jsonpath='{.spec.baseDomain}')
+                  ROOT_DOMAIN=$(echo "${BASE_DOMAIN}" | sed 's/^[^.]*\.//')
 
                   # Check Gateway hostname
                   echo "[1/4] Checking Gateway prod-web hostname..."
                   GATEWAY_HOSTNAME=$(oc get gateway prod-web -n ingress-gateway -o jsonpath='{.spec.listeners[0].hostname}' 2>/dev/null || echo "")
                   if [[ "$GATEWAY_HOSTNAME" == *"placeholder"* ]]; then
                     echo "  ⚠️  Gateway has placeholder: $GATEWAY_HOSTNAME"
-                    echo "  → Patching to: *.globex.${BASE_DOMAIN}"
+                    echo "  → Patching to: *.globex.${ROOT_DOMAIN}"
                     oc patch gateway prod-web -n ingress-gateway --type=json -p="[
-                      {\"op\": \"replace\", \"path\": \"/spec/listeners/0/hostname\", \"value\": \"*.globex.${BASE_DOMAIN}\"}
+                      {\"op\": \"replace\", \"path\": \"/spec/listeners/0/hostname\", \"value\": \"*.globex.${ROOT_DOMAIN}\"}
                     ]"
                     echo "  ✅ Gateway patched"
                     NEEDS_PATCH=1
@@ -59,9 +60,9 @@ spec:
                   ECHO_HOSTNAME=$(oc get httproute echo-api -n echo-api -o jsonpath='{.spec.hostnames[0]}' 2>/dev/null || echo "")
                   if [[ "$ECHO_HOSTNAME" == *"placeholder"* ]]; then
                     echo "  ⚠️  HTTPRoute has placeholder: $ECHO_HOSTNAME"
-                    echo "  → Patching to: echo.globex.${BASE_DOMAIN}"
+                    echo "  → Patching to: echo.globex.${ROOT_DOMAIN}"
                     oc patch httproute echo-api -n echo-api --type=json -p="[
-                      {\"op\": \"replace\", \"path\": \"/spec/hostnames/0\", \"value\": \"echo.globex.${BASE_DOMAIN}\"}
+                      {\"op\": \"replace\", \"path\": \"/spec/hostnames/0\", \"value\": \"echo.globex.${ROOT_DOMAIN}\"}
                     ]"
                     echo "  ✅ HTTPRoute patched"
                     NEEDS_PATCH=1
