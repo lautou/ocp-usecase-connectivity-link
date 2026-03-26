@@ -89,28 +89,8 @@ spec:
                   fi
                   echo ""
 
-                  # Check Keycloak hostname (RHBK)
-                  echo "[4/5] Checking Keycloak hostname in rhbk namespace..."
-                  KEYCLOAK_HOSTNAME=$(oc get keycloak keycloak -n rhbk -o jsonpath='{.spec.hostname.hostname}' 2>/dev/null || echo "")
-                  if [[ "$KEYCLOAK_HOSTNAME" == *"placeholder"* ]]; then
-                    echo "  ⚠️  Keycloak has placeholder: $KEYCLOAK_HOSTNAME"
-                    APPS_DOMAIN=$(oc get ingresscontroller default -n openshift-ingress-operator -o jsonpath='{.status.domain}')
-                    KEYCLOAK_HOSTNAME_FIXED="keycloak-rhbk.${APPS_DOMAIN}"
-                    echo "  → Patching to: ${KEYCLOAK_HOSTNAME_FIXED}"
-                    oc patch keycloak keycloak -n rhbk --type=json -p="[
-                      {\"op\": \"replace\", \"path\": \"/spec/hostname/hostname\", \"value\": \"${KEYCLOAK_HOSTNAME_FIXED}\"}
-                    ]"
-                    echo "  ✅ Keycloak hostname patched"
-                    NEEDS_PATCH=1
-                  elif [[ -z "$KEYCLOAK_HOSTNAME" ]]; then
-                    echo "  ℹ️  Keycloak not found in rhbk namespace (may not be deployed yet)"
-                  else
-                    echo "  ✓ Keycloak OK: $KEYCLOAK_HOSTNAME"
-                  fi
-                  echo ""
-
                   # Check globex-mobile deployment
-                  echo "[5/5] Checking globex-mobile deployment env vars..."
+                  echo "[4/4] Checking globex-mobile deployment env vars..."
                   SSO_AUTHORITY=$(oc get deployment globex-mobile -n globex-apim-user1 -o jsonpath='{.spec.template.spec.containers[0].env[?(@.name=="SSO_AUTHORITY")].value}' 2>/dev/null || echo "")
                   if [[ "$SSO_AUTHORITY" == *"placeholder"* ]]; then
                     echo "  ⚠️  Deployment has placeholder values"
