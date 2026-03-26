@@ -1,0 +1,17 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+  # Namespace
+  - cluster-ns-apicurio.yaml
+
+  # PostgreSQL Database
+  - apicurio-secret-postgres-db.yaml
+  - apicurio-deployment-postgres-db.yaml
+  - apicurio-service-postgres-db.yaml
+
+  # Apicurio Registry 3
+  - apicurio-apicurioregistry3-apicurio-studio.yaml
+
+  # Job
+  - openshift-gitops-job-apicurio-hostname.yaml

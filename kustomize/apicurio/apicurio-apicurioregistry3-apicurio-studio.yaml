@@ -1,0 +1,64 @@
+apiVersion: registry.apicur.io/v1
+kind: ApicurioRegistry3
+metadata:
+  name: apicurio-studio
+  namespace: apicurio
+spec:
+  app:
+    replicas: 1
+
+    # Storage configuration - PostgreSQL
+    storage:
+      type: postgresql
+      sql:
+        dataSource:
+          url: jdbc:postgresql://postgres-db.apicurio.svc.cluster.local:5432/apicuriodb
+          username: apicurio
+          password:
+            name: postgres-db
+            key: password
+
+    # Keycloak authentication
+    auth:
+      enabled: true
+      authServerUrl: https://keycloak-keycloak.apps.placeholder/realms/apicurio
+      appClientId: apicurio-api
+      uiClientId: apicurio-studio
+      redirectUri: https://apicurio-studio-ui-apicurio.apps.placeholder
+      logoutUrl: https://apicurio-studio-ui-apicurio.apps.placeholder
+
+      # Authorization configuration
+      authz:
+        enabled: true
+        ownerOnlyEnabled: true
+        readAccessEnabled: true
+        roles:
+          admin: admin
+          developer: developer
+          readOnly: readOnly
+          source: token
+
+      # Basic auth for API clients
+      basicAuth:
+        enabled: true
+        cacheExpiration: 10min
+
+    # Features
+    features:
+      resourceDeleteEnabled: true
+      versionMutabilityEnabled: false
+
+    # Ingress for backend API
+    ingress:
+      enabled: true
+      host: apicurio-studio-api-apicurio.apps.placeholder
+
+  # UI component
+  ui:
+    enabled: true
+    replicas: 1
+
+    # Ingress for frontend UI
+    ingress:
+      enabled: true
+      host: apicurio-studio-ui-apicurio.apps.placeholder

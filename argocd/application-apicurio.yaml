@@ -1,0 +1,33 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: usecase-connectivity-link-apicurio
+  namespace: openshift-gitops
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: solution-patterns-connectivity-link
+  source:
+    repoURL: https://github.com/lautou/ocp-usecase-connectivity-link.git
+    targetRevision: main
+    path: kustomize/apicurio
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: apicurio
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+  ignoreDifferences:
+    - group: registry.apicur.io
+      kind: ApicurioRegistry3
+      name: apicurio-studio
+      namespace: apicurio
+      jsonPointers:
+        - /spec/app/auth/authServerUrl
+        - /spec/app/auth/redirectUri
+        - /spec/app/auth/logoutUrl
+        - /spec/app/ingress/host
+        - /spec/ui/ingress/host
