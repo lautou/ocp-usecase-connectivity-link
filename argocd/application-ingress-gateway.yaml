@@ -11,7 +11,7 @@ spec:
   source:
     repoURL: https://github.com/lautou/ocp-usecase-connectivity-link.git
     targetRevision: main
-    path: kustomize/overlays/ingress-gateway
+    path: kustomize/ingress-gateway
   destination:
     server: https://kubernetes.default.svc
   ignoreDifferences:
