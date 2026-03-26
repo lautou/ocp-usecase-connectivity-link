@@ -1,13 +1,13 @@
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
-  name: usecase-connectivity-link
+  name: bootstrap-deployment
   namespace: openshift-gitops
   labels:
-    app.kubernetes.io/name: usecase-connectivity-link
+    app.kubernetes.io/name: bootstrap-deployment
     app.kubernetes.io/part-of: connectivity-link
 spec:
-  project: solutions-pattern
+  project: solution-pattern-connectivity-link
   source:
     repoURL: https://github.com/lautou/ocp-usecase-connectivity-link.git
     targetRevision: main
@@ -15,10 +15,6 @@ spec:
   destination:
     server: https://kubernetes.default.svc
   ignoreDifferences:
-    - group: gateway.networking.k8s.io
-      kind: Gateway
-      jsonPointers:
-        - /spec/listeners/0/hostname
     - group: kuadrant.io
       kind: AuthPolicy
       name: globex-mobile-gateway
