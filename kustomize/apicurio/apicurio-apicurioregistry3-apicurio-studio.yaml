@@ -29,6 +29,10 @@ spec:
       redirectUri: https://apicurio-studio-ui-apicurio.apps.placeholder
       logoutUrl: https://apicurio-studio-ui-apicurio.apps.placeholder
 
+      # TLS configuration for Keycloak connection
+      tls:
+        tlsVerificationType: none  # Disable TLS verification (using OpenShift Routes)
+
       # Authorization configuration
       authz:
         enabled: true
