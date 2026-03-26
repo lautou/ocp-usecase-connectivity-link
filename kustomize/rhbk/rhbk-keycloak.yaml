@@ -25,3 +25,6 @@ spec:
     hostname: keycloak-rhbk.placeholder  # Will be patched to actual cluster domain
   ingress:
     enabled: true
+  additionalOptions:
+    - name: proxy-headers
+      value: xforwarded  # Trust X-Forwarded-* headers from OpenShift Route
