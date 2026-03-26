@@ -7,7 +7,7 @@ metadata:
     app.kubernetes.io/name: usecase-connectivity-link
     app.kubernetes.io/part-of: connectivity-link
 spec:
-  project: infra
+  project: solutions-pattern
   source:
     repoURL: https://github.com/lautou/ocp-usecase-connectivity-link.git
     targetRevision: main
