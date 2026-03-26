@@ -11,3 +11,4 @@ resources:
   - rhbk-secret-keycloak-db-password.yaml
   - rhbk-keycloak.yaml
   - rhbk-keycloakrealmimport-apicurio.yaml
+  - openshift-gitops-job-keycloak-hostname.yaml

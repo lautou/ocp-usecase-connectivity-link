@@ -14,6 +14,11 @@ spec:
     path: kustomize/rhbk
   destination:
     server: https://kubernetes.default.svc
+  ignoreDifferences:
+    - group: k8s.keycloak.org
+      kind: Keycloak
+      jsonPointers:
+        - /spec/hostname/hostname
   syncPolicy:
     automated:
       prune: true
