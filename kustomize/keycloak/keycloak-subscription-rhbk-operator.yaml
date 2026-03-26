@@ -11,4 +11,8 @@ spec:
   sourceNamespace: openshift-marketplace
   config:
     nodeSelector:
-      node-role.kubernetes.io/worker: ""
+      node-role.kubernetes.io/infra: ""
+    tolerations:
+      - key: node-role.kubernetes.io/infra
+        operator: Exists
+        effect: NoSchedule
