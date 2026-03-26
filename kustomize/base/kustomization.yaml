@@ -10,6 +10,7 @@ resources:
   # Namespaces
   - cluster-ns-echo-api.yaml
   - cluster-ns-globex-apim-user1.yaml
+  - cluster-ns-ingress-gateway.yaml
 
   # echo-api namespace resources
   - echo-api-authpolicy-echo-api.yaml
