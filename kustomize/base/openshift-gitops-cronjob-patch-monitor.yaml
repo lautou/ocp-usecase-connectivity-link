@@ -36,9 +36,26 @@ spec:
                   echo ""
 
                   NEEDS_PATCH=0
+                  BASE_DOMAIN=$(oc get dns cluster -o jsonpath='{.spec.baseDomain}')
+
+                  # Check Gateway hostname
+                  echo "[1/3] Checking Gateway prod-web hostname..."
+                  GATEWAY_HOSTNAME=$(oc get gateway prod-web -n ingress-gateway -o jsonpath='{.spec.listeners[0].hostname}' 2>/dev/null || echo "")
+                  if [[ "$GATEWAY_HOSTNAME" == *"placeholder"* ]]; then
+                    echo "  ⚠️  Gateway has placeholder: $GATEWAY_HOSTNAME"
+                    echo "  → Patching to: *.globex.${BASE_DOMAIN}"
+                    oc patch gateway prod-web -n ingress-gateway --type=json -p="[
+                      {\"op\": \"replace\", \"path\": \"/spec/listeners/0/hostname\", \"value\": \"*.globex.${BASE_DOMAIN}\"}
+                    ]"
+                    echo "  ✅ Gateway patched"
+                    NEEDS_PATCH=1
+                  else
+                    echo "  ✓ Gateway OK: $GATEWAY_HOSTNAME"
+                  fi
+                  echo ""
 
                   # Check globex-mobile-gateway AuthPolicy
-                  echo "[1/2] Checking globex-mobile-gateway AuthPolicy issuerUrl..."
+                  echo "[2/3] Checking globex-mobile-gateway AuthPolicy issuerUrl..."
                   ISSUER_URL=$(oc get authpolicy globex-mobile-gateway -n globex-apim-user1 -o jsonpath='{.spec.rules.authentication.keycloak-users.jwt.issuerUrl}' 2>/dev/null || echo "")
                   if [[ "$ISSUER_URL" == *"placeholder"* ]]; then
                     echo "  ⚠️  AuthPolicy has placeholder: $ISSUER_URL"
@@ -56,7 +73,7 @@ spec:
                   echo ""
 
                   # Check globex-mobile deployment
-                  echo "[2/2] Checking globex-mobile deployment env vars..."
+                  echo "[3/3] Checking globex-mobile deployment env vars..."
                   SSO_AUTHORITY=$(oc get deployment globex-mobile -n globex-apim-user1 -o jsonpath='{.spec.template.spec.containers[0].env[?(@.name=="SSO_AUTHORITY")].value}' 2>/dev/null || echo "")
                   if [[ "$SSO_AUTHORITY" == *"placeholder"* ]]; then
                     echo "  ⚠️  Deployment has placeholder values"

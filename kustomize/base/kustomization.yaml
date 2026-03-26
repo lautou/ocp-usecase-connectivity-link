@@ -6,6 +6,7 @@ resources:
   - cluster-gatewayclass-istio.yaml
   - cluster-clusterrole-gateway-manager.yaml
   - cluster-crb-gateway-manager-openshift-gitops-argocd-application-controller.yaml
+  - cluster-clusterissuer-prod-web-lets-encrypt.yaml
 
   # Namespaces
   - cluster-ns-echo-api.yaml
@@ -49,7 +50,21 @@ resources:
   # keycloak namespace resources (Keycloak realm import)
   - keycloak-keycloakrealmimport-globex-user1.yaml
 
+  # ingress-gateway namespace resources
+  - ingress-gateway-authpolicy-prod-web-deny-all.yaml
+  - ingress-gateway-dnspolicy-prod-web.yaml
+  - ingress-gateway-gateway-prod-web.yaml
+  - ingress-gateway-ratelimitpolicy-prod-web.yaml
+  - ingress-gateway-tlspolicy-prod-web.yaml
+
+  # Monitoring resources (matches ansible deployment)
+  - ingress-gateway-servicemonitor-prod-web.yaml
+  - ingress-gateway-podmonitor-istio-proxies.yaml
+  - ingress-gateway-service-prod-web-metrics-proxy.yaml
+
   # openshift-gitops namespace resources (Jobs for dynamic configuration)
+  - openshift-gitops-job-aws-credentials.yaml
+  - openshift-gitops-job-gateway-prod-web.yaml
   - openshift-gitops-job-globex-env.yaml
   - openshift-gitops-job-globex-mobile-gateway-authpolicy.yaml
   - openshift-gitops-job-globex-ns-delegation.yaml
