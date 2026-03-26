@@ -1,0 +1,29 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: usecase-connectivity-link-keycloak
+  namespace: openshift-gitops
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: solution-patterns-connectivity-link
+  source:
+    repoURL: https://github.com/lautou/rhcl.git
+    targetRevision: main
+    path: kustomize/keycloak
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: keycloak
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+  ignoreDifferences:
+    - group: k8s.keycloak.org
+      kind: Keycloak
+      name: keycloak
+      namespace: keycloak
+      jsonPointers:
+        - /spec/hostname/hostname

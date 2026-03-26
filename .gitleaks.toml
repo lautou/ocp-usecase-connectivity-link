@@ -19,9 +19,15 @@ regexes = [
 
     # globex-mobile demo secret
     '''\bAob7zLHHStk2RCSn2DVwjmhSwoxOwHW7\b''',
+
+    # apicurio-api secret (from ansible RHSSO deployment)
+    '''\bchYONU5\+MiWocygUJqSRb\+cen4Y=\b''',
+
+    # apicurio-studio secret (from ansible RHSSO deployment)
+    '''\bQvH/sygBShNjZHd7vD3/lqI2Zh0=\b''',
 ]
 
 # Alternative: You can also ignore by file path
-# paths = [
-#     '''^kustomize/base/keycloak-keycloakrealmimport-globex-user1\.yaml$''',
-# ]
+paths = [
+    '''^kustomize/keycloak/keycloak-keycloakrealmimport-apicurio\.yaml$''',
+]

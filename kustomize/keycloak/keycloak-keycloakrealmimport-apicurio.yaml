@@ -1,0 +1,64 @@
+apiVersion: k8s.keycloak.org/v2alpha1
+kind: KeycloakRealmImport
+metadata:
+  name: apicurio
+  namespace: keycloak
+  annotations:
+    argocd.argoproj.io/sync-options: SkipDryRunOnMissingResource=true
+spec:
+  keycloakCRName: keycloak
+  realm:
+    enabled: true
+    id: apicurio
+    realm: apicurio
+    registrationAllowed: true
+    registrationEmailAsUsername: true
+    rememberMe: true
+    sslRequired: external
+    clients:
+      - clientId: apicurio-api
+        secret: chYONU5+MiWocygUJqSRb+cen4Y=
+        clientAuthenticatorType: client-secret
+        bearerOnly: true
+        standardFlowEnabled: true
+        directAccessGrantsEnabled: true
+        defaultClientScopes:
+          - role_list
+          - profile
+          - email
+        optionalClientScopes:
+          - address
+          - phone
+          - offline_access
+      - clientId: apicurio-studio
+        secret: QvH/sygBShNjZHd7vD3/lqI2Zh0=
+        publicClient: true
+        clientAuthenticatorType: "none"
+        standardFlowEnabled: true
+        directAccessGrantsEnabled: true
+        rootUrl: https://apicurio-studio-ui-apicurio.placeholder
+        redirectUris:
+          - https://apicurio-studio-ui-apicurio.placeholder/*
+        baseUrl: https://apicurio-studio-ui-apicurio.placeholder
+        webOrigins:
+          - "+"
+        attributes:
+          pkce.code.challenge.method: "S256"
+          saml.assertion.signature: "false"
+          saml.force.post.binding: "false"
+          saml.multivalued.roles: "false"
+          saml.encrypt: "false"
+          saml_force_name_id_format: "false"
+          saml.client.signature: "false"
+          saml.authnstatement: "false"
+          saml.server.signature: "false"
+          saml.server.signature.keyinfo.ext: "false"
+          saml.onetimeuse.condition: "false"
+        defaultClientScopes:
+          - role_list
+          - profile
+          - email
+        optionalClientScopes:
+          - address
+          - phone
+          - offline_access
