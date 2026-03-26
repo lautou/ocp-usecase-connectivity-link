@@ -8,14 +8,7 @@ resources:
   - cluster-crb-gateway-manager-openshift-gitops-argocd-application-controller.yaml
 
   # Namespaces
-  - cluster-ns-echo-api.yaml
   - cluster-ns-globex-apim-user1.yaml
-
-  # echo-api namespace resources
-  - echo-api-authpolicy-echo-api.yaml
-  - echo-api-deployment-echo-api.yaml
-  - echo-api-ratelimitpolicy-echo-api-rlp.yaml
-  - echo-api-service-echo-api.yaml
 
   # globex-apim-user1 namespace resources (monolith architecture)
   # Database

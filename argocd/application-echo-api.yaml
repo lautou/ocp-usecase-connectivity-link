@@ -1,0 +1,27 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: echo-api
+  namespace: openshift-gitops
+  labels:
+    app.kubernetes.io/name: echo-api
+    app.kubernetes.io/part-of: connectivity-link
+spec:
+  project: solution-patterns-connectivity-link
+  source:
+    repoURL: https://github.com/lautou/ocp-usecase-connectivity-link.git
+    targetRevision: main
+    path: kustomize/echo-api
+  destination:
+    server: https://kubernetes.default.svc
+  ignoreDifferences:
+    - group: gateway.networking.k8s.io
+      kind: HTTPRoute
+      jsonPointers:
+        - /spec/hostnames
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true

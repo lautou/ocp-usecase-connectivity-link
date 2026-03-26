@@ -1,0 +1,50 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: echo-api-httproute-setup
+  namespace: openshift-gitops
+  annotations:
+    argocd.argoproj.io/hook: PostSync
+    argocd.argoproj.io/hook-delete-policy: BeforeHookCreation
+    argocd.argoproj.io/sync-wave: "3"
+    argocd.argoproj.io/sync-options: Force=true
+  labels:
+    app.kubernetes.io/name: echo-api-httproute-setup
+    app.kubernetes.io/part-of: connectivity-link
+spec:
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: echo-api-httproute-setup
+    spec:
+      serviceAccountName: openshift-gitops-argocd-application-controller
+      restartPolicy: Never
+      containers:
+        - name: setup
+          image: registry.redhat.io/openshift4/ose-cli:latest
+          command:
+            - /bin/bash
+            - -c
+            - |
+              set -e
+
+              echo "=========================================="
+              echo "Echo API HTTPRoute Setup"
+              echo "=========================================="
+              echo ""
+
+              # Get cluster domain
+              BASE_DOMAIN=$(oc get dns cluster -o jsonpath='{.spec.baseDomain}')
+              echo "Cluster domain: ${BASE_DOMAIN}"
+
+              # Patch HTTPRoute hostname
+              echo "Patching HTTPRoute echo-api hostname..."
+              oc patch httproute echo-api -n echo-api --type=json -p="[
+                {\"op\": \"replace\", \"path\": \"/spec/hostnames/0\", \"value\": \"echo.globex.${BASE_DOMAIN}\"}
+              ]"
+
+              echo ""
+              echo "=========================================="
+              echo "✅ HTTPRoute setup completed!"
+              echo "Hostname: echo.globex.${BASE_DOMAIN}"
+              echo "=========================================="

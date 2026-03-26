@@ -1,0 +1,28 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: echo-api
+  namespace: echo-api
+  labels:
+    app.kubernetes.io/instance: echo-api
+    app.kubernetes.io/name: echo-api
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/instance: echo-api
+      app.kubernetes.io/name: echo-api
+  strategy:
+    type: Recreate
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/instance: echo-api
+        app.kubernetes.io/name: echo-api
+    spec:
+      containers:
+        - name: echo-api
+          image: quay.io/3scale/authorino:echo-api
+          ports:
+            - name: http
+              containerPort: 8080
