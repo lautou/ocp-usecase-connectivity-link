@@ -70,6 +70,16 @@ spec:
                 secretKeyRef:
                   name: globex-db
                   key: database-name
+            - name: POSTGRESQL_ADMIN_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: globex-db
+                  key: database-admin-password
+            - name: POSTGRESQL_DEBEZIUM_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: globex-db
+                  key: database-debezium-password
           securityContext:
             allowPrivilegeEscalation: false
             capabilities:
