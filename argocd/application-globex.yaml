@@ -14,7 +14,6 @@ spec:
     path: kustomize/globex
   destination:
     server: https://kubernetes.default.svc
-    namespace: globex-apim-user1
   syncPolicy:
     automated:
       prune: true
