@@ -1,0 +1,28 @@
+apiVersion: k8s.keycloak.org/v2alpha1
+kind: Keycloak
+metadata:
+  name: keycloak
+  namespace: rhbk
+  labels:
+    app: keycloak
+  annotations:
+    argocd.argoproj.io/sync-options: SkipDryRunOnMissingResource=true
+spec:
+  instances: 1
+  db:
+    vendor: postgres
+    host: postgres-db.rhbk.svc.cluster.local
+    usernameSecret:
+      name: postgres-db
+      key: database-user
+    passwordSecret:
+      name: keycloak-db-password
+      key: password
+  http:
+    httpEnabled: true
+  hostname:
+    hostname: placeholder
+    strict: false
+    adminUrl: placeholder
+  ingress:
+    enabled: true
