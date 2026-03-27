@@ -78,6 +78,8 @@ spec:
           env:
             - name: NODE_ENV
               value: prod
+            - name: PORT
+              value: "8080"
             - name: GLOBEX_MOBILE_GATEWAY
               value: http://globex-mobile-gateway:8080
             - name: SSO_CUSTOM_CONFIG
