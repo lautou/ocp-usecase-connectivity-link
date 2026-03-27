@@ -20,6 +20,8 @@ spec:
       key: password
   http:
     httpEnabled: true
+  proxy:
+    headers: xforwarded
   hostname:
     hostname: placeholder
     strict: false
