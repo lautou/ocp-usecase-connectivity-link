@@ -83,11 +83,11 @@ spec:
             - name: GLOBEX_MOBILE_GATEWAY
               value: http://globex-mobile-gateway:8080
             - name: SSO_CUSTOM_CONFIG
-              value: globex-mobile
+              value: globex-mobile  # OAuth client ID - DO NOT CHANGE
             - name: SSO_AUTHORITY
-              value: placeholder  # Will be patched by Job
+              value: placeholder  # Will be patched by Job to Keycloak URL
             - name: SSO_REDIRECT_LOGOUT_URI
-              value: placeholder  # Will be patched by Job
+              value: placeholder  # Will be patched by Job to globex-mobile URL
             - name: SSO_LOG_LEVEL
               value: "2"
           volumeMounts:

@@ -34,8 +34,8 @@ spec:
               echo "Patching globex-mobile deployment..."
               oc patch deployment globex-mobile -n globex-apim-user1 --type=json -p='[
                 {"op": "replace", "path": "/spec/template/spec/initContainers/0/env/0/value", "value": "'"${KEYCLOAK_URL}"'"},
-                {"op": "replace", "path": "/spec/template/spec/containers/0/env/2/value", "value": "'"${KEYCLOAK_URL}"'"},
-                {"op": "replace", "path": "/spec/template/spec/containers/0/env/3/value", "value": "https://globex-mobile-globex-apim-user1.'"${APPS_DOMAIN}"'"}
+                {"op": "replace", "path": "/spec/template/spec/containers/0/env/4/value", "value": "'"${KEYCLOAK_URL}"'"},
+                {"op": "replace", "path": "/spec/template/spec/containers/0/env/5/value", "value": "https://globex-mobile-globex-apim-user1.'"${APPS_DOMAIN}"'"}
               ]'
 
               # Patch globex-mobile-gateway deployment
