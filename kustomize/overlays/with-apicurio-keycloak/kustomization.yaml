@@ -1,0 +1,10 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+  # Include base connectivity link infrastructure
+  - ../../base
+
+  # Additional applications: Apicurio Studio and Keycloak
+  - application-apicurio.yaml
+  - application-keycloak.yaml
