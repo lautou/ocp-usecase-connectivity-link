@@ -926,26 +926,28 @@ metadata:
 
 ## Ingress Gateway Deployment - Ansible Alignment ✅
 
-**Status**: Successfully deployed ingress-gateway infrastructure matching Red Hat's ansible deployment **100%** (2026-03-25)
+**Status**: Successfully deployed ingress-gateway infrastructure matching Red Hat's ansible deployment **100%** (2026-03-27)
 
 ### Quick Summary
 
-We validated **two deployment approaches** and achieved **100% resource name alignment**:
+We validated **two deployment approaches** and achieved **100% resource alignment**:
 - Red Hat's Ansible/Helm (connectivity-link-ansible repository)
-- Our GitOps/ArgoCD (this repository - `kustomize/overlays/ingress-gateway-only/`)
+- Our GitOps/ArgoCD (this repository - `kustomize/ingress-gateway/`)
 
-**Result**: Identical infrastructure with exact same resource names and configuration.
+**Result**: Identical infrastructure with exact same resource names, configuration, and behavior.
 
 ### Resource Names - 100% Match
 
 | Resource | Ansible Name | Our Deployment | Match |
 |----------|--------------|----------------|-------|
 | Gateway hostname | `*.globex.sandbox3491.opentlc.com` | `*.globex.sandbox3491.opentlc.com` | ✅ Exact |
+| Gateway geo-code label | `kuadrant.io/lb-attribute-geo-code: EU` | `kuadrant.io/lb-attribute-geo-code: EU` | ✅ Exact |
 | TLSPolicy | `prod-web-tls-policy` | `prod-web-tls-policy` | ✅ Exact |
 | RateLimitPolicy | `prod-web-rlp-lowlimits` | `prod-web-rlp-lowlimits` | ✅ Exact |
 | AuthPolicy | `prod-web-deny-all` | `prod-web-deny-all` | ✅ Exact |
 | ClusterIssuer | `prod-web-lets-encrypt-issuer` | `prod-web-lets-encrypt-issuer` | ✅ Exact |
 | AWS Secret | `prod-web-aws-credentials` | `prod-web-aws-credentials` | ✅ Exact |
+| DNSPolicy | ❌ NOT created | ❌ NOT created | ✅ Exact |
 | Namespace label | ❌ Manual `oc label` | ✅ In Git manifests | **Better** |
 
 ### The ONE Critical Difference
@@ -995,9 +997,19 @@ We validated **two deployment approaches** and achieved **100% resource name ali
    - Solution: Copy all manifests into overlay
    - Result: Fully portable and reproducible
 
-4. **DNSPolicy is Optional**:
-   - Not included in ansible Helm chart
-   - DNS automation is an enhancement (available in `overlays/default`)
+4. **DNSPolicy is NOT Created by Ansible**:
+   - Ansible Helm chart has `dns.routingStrategy: loadbalanced` and `loadBalancing.geo` values
+   - **BUT**: No DNSPolicy template exists in the Helm chart
+   - These values are **completely unused** (no template consumes them)
+   - Only geo-related configuration: Gateway label `kuadrant.io/lb-attribute-geo-code: EU`
+   - This label is **metadata only** - does nothing without DNSPolicy configured
+   - To match ansible exactly: DNSPolicy must NOT be deployed
+
+5. **Geo-Routing is NOT Enabled**:
+   - Despite Helm values suggesting geo-routing and weighted load balancing
+   - Ansible does NOT create ManagedZone or DNSPolicy resources
+   - Gateway label exists but has no effect (requires DNSPolicy to work)
+   - DNS automation is an enhancement available in our default overlay
 
 **For complete details**, see [INGRESS_GATEWAY_DEPLOYMENT.md](INGRESS_GATEWAY_DEPLOYMENT.md)
 
