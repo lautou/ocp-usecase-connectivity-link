@@ -2,7 +2,7 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: postgres-db
-  namespace: rhbk
+  namespace: keycloak
   labels:
     app: postgres-db
     app.openshift.io/runtime: postgresql

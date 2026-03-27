@@ -3,7 +3,7 @@ kind: Kustomization
 
 resources:
   # Namespace
-  - cluster-ns-rhbk.yaml
+  - cluster-ns-keycloak.yaml
 
   # RHBK Operator
   - rhbk-operatorgroup.yaml
