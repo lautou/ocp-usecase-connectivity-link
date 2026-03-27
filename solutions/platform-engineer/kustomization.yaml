@@ -1,0 +1,10 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+  - ingress-gateway-dnspolicy-prod-web.yaml
+  - echo-api-ratelimitpolicy-echo-api.yaml
+
+commonLabels:
+  solution-pattern.kuadrant.io/tutorial: platform-engineer
+  solution-pattern.kuadrant.io/persona: platform-engineer

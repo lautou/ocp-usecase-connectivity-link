@@ -1,0 +1,19 @@
+apiVersion: kuadrant.io/v1
+kind: RateLimitPolicy
+metadata:
+  name: echo-api-rlp
+  namespace: echo-api
+  labels:
+    app.kubernetes.io/name: echo-api-rlp
+    app.kubernetes.io/part-of: solution-patterns-connectivity-link
+    solution-pattern.kuadrant.io/tutorial: platform-engineer
+spec:
+  targetRef:
+    group: gateway.networking.k8s.io
+    kind: HTTPRoute
+    name: echo-api
+  limits:
+    echo-api:
+      rates:
+        - limit: 10
+          window: 12s

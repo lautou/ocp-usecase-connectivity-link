@@ -43,7 +43,8 @@ spec:
 
 ### Infrastructure
 - **Gateway API**: `prod-web` in `ingress-gateway` namespace - `*.globex.<cluster-domain>`
-- **DNS**: ACK Route53 Controller (HostedZone + RecordSet) - **NOT Kuadrant DNSPolicy**
+- **DNS Base**: ACK Route53 Controller (HostedZone + RecordSet for subdomain delegation)
+- **DNS Optional**: Kuadrant DNSPolicy (in `solutions/platform-engineer/` - not deployed by default)
 - **Kuadrant**: TLSPolicy, AuthPolicy (deny-by-default), RateLimitPolicy
 - **cert-manager**: Let's Encrypt wildcard certificates via DNS-01
 
@@ -71,14 +72,58 @@ kustomize/
 ├── rhbk/               # RHBK 26 operator + Keycloak CR + realm
 └── apicurio/           # Apicurio Studio (schema registry)
 
+solutions/              # Optional tutorial resources (NOT in base GitOps)
+├── README.md           # Solutions documentation
+└── platform-engineer/  # Platform Engineer tutorial (DNSPolicy)
+    ├── kustomization.yaml
+    └── ingress-gateway-dnspolicy-prod-web.yaml
+
 argocd/
-├── application.yaml           # Bootstrap application (default overlay)
-├── application-globex.yaml    # Globex application
-├── application-rhbk.yaml      # RHBK stack
-└── application-apicurio.yaml  # Apicurio Studio
+├── application.yaml                            # Bootstrap application (default overlay)
+├── application-globex.yaml                     # Globex application
+├── application-rhbk.yaml                       # RHBK stack
+├── application-apicurio.yaml                   # Apicurio Studio
+└── application-solutions-platform-engineer.yaml # Optional: Platform Engineer tutorial (GitOps)
+
+scripts/
+├── deploy.sh           # Deploy base infrastructure
+├── test-deploy.sh      # Test deployment
+├── cleanup-quay-repos.sh
+└── solutions.sh        # Deploy/manage solution pattern tutorials
 ```
 
 **File naming convention**: `<namespace>-<kind>-<name>.yaml`
+
+## Solution Patterns (Optional Tutorial Resources)
+
+**Location**: `solutions/` directory
+
+The `solutions/` directory contains **optional resources** for following the [Red Hat Connectivity Link Solution Pattern](https://www.solutionpatterns.io/soln-pattern-connectivity-link/) tutorials. These are:
+- **Not deployed by default** - They are additive to the base deployment
+- **Tutorial-focused** - Designed for learning specific use cases
+- **Independently managed** - Deploy/remove without affecting base infrastructure
+
+**Available Solutions**:
+- **platform-engineer**: DNSPolicy for automated Route53 DNS management
+  - Tutorial: https://www.solutionpatterns.io/soln-pattern-connectivity-link/solution-pattern/03.1-platform.html
+  - Deploys: DNSPolicy targeting Gateway `prod-web`
+
+**Usage**:
+```bash
+# List available solutions
+./scripts/solutions.sh list
+
+# Deploy platform-engineer tutorial resources
+./scripts/solutions.sh deploy platform-engineer
+
+# Check status
+./scripts/solutions.sh status platform-engineer
+
+# Remove resources
+./scripts/solutions.sh delete platform-engineer
+```
+
+**See**: `solutions/README.md` for detailed documentation
 
 ## Quick Verification
 
@@ -96,9 +141,13 @@ oc get gateway -n ingress-gateway -o custom-columns=NAME:.metadata.name,HOSTNAME
 # HTTPRoutes
 oc get httproute -A
 
-# DNS infrastructure (ACK Route53, not DNSPolicy)
+# DNS infrastructure (ACK Route53 - base)
 oc get hostedzone -n ack-system
 oc get recordset -n ack-system
+
+# Optional: DNSPolicy (if solution deployed)
+oc get dnspolicy -n ingress-gateway
+oc get dnsrecord.kuadrant.io -n ingress-gateway
 
 # RHBK 26
 oc get keycloak -n keycloak
@@ -112,9 +161,16 @@ oc get route -n apicurio
 ## Critical Architecture Decisions
 
 ### DNS Management
-- **Uses**: ACK Route53 Controller (HostedZone + RecordSet CRs)
-- **NOT using**: Kuadrant DNSPolicy
-- **Why**: Direct Route53 integration, same outcome as DNSPolicy
+- **Base (Required)**: ACK Route53 Controller for subdomain delegation
+  - Creates HostedZone for `globex.<cluster-domain>`
+  - Creates NS RecordSet in parent zone
+  - Deployed by default in `kustomize/` manifests
+- **Optional (Tutorial)**: Kuadrant DNSPolicy for automated DNS
+  - Automatically creates CNAME records for HTTPRoutes
+  - Wildcard DNS: `*.globex.<cluster-domain>` → Load Balancer
+  - Available in `solutions/platform-engineer/`
+  - **NOT deployed by default** - Use `./scripts/solutions.sh deploy platform-engineer`
+- **Why separate?**: Base provides production subdomain delegation, DNSPolicy is tutorial-specific for automated record management
 - **Details**: `docs/deployment/dns-delegation-testing.md`
 
 ### Gateway Hostname Pattern
