@@ -1859,7 +1859,7 @@ Red Hat's approach creates a more dramatic demo (without HTTPRoute → app break
      - Uses apps domain (not root domain): `keycloak-rhbk.apps.myocp.sandbox3491.opentlc.com`
      - 2 steps, ~5 seconds execution
      - **Automatic re-run**: If Keycloak CR gets deleted/recreated
-     - **Namespace**: Job runs in openshift-gitops namespace, patches resource in rhbk namespace
+     - **Namespace**: Job runs in openshift-gitops namespace, patches resource in keycloak namespace
 
    **Robustness Features:**
    - ✅ PostSync hooks run on Git commits and manual syncs (95% of cases)
@@ -1876,7 +1876,7 @@ Red Hat's approach creates a more dramatic demo (without HTTPRoute → app break
      - Gateway `prod-web` hostname (should be `*.globex.<cluster-domain>`)
      - HTTPRoute `echo-api` hostname (should be `echo.globex.<cluster-domain>`)
      - HTTPRoute `productcatalog` hostname (should be `catalog.globex.<cluster-domain>`)
-     - Keycloak `keycloak` hostname in rhbk namespace (should be `keycloak-rhbk.<apps-domain>`)
+     - Keycloak `keycloak` hostname in keycloak namespace (should be `keycloak-rhbk.<apps-domain>`)
      - Deployment `globex-mobile` env vars (`SSO_AUTHORITY`, `SSO_REDIRECT_LOGOUT_URI`)
      - Deployment `globex-mobile-gateway` env var (`KEYCLOAK_AUTH_SERVER_URL`)
    - **Action**: If placeholder detected, automatically patches to correct value
@@ -2016,8 +2016,8 @@ Red Hat's approach creates a more dramatic demo (without HTTPRoute → app break
    - **Allows**: HTTPRoute `productcatalog` to reference Service `globex-store-app`
    - **Error without it**: `RefNotPermitted: backendRef globex-store-app/globex not accessible`
 
-18. **RHBK (Red Hat build of Keycloak)** (rhbk namespace)
-   - **Namespace** (`cluster-ns-rhbk.yaml`)
+18. **RHBK (Red Hat build of Keycloak)** (keycloak namespace)
+   - **Namespace** (`cluster-ns-keycloak.yaml`)
      - **CRITICAL**: Must have label `argocd.argoproj.io/managed-by: openshift-gitops` for automatic RBAC
      - Without this label: Kuadrant operators fail with permission errors
    - **OperatorGroup** (`rhbk-operatorgroup.yaml`)
@@ -2033,7 +2033,7 @@ Red Hat's approach creates a more dramatic demo (without HTTPRoute → app break
    - **Keycloak CR** (`rhbk-keycloak.yaml`)
      - API Version: `k8s.keycloak.org/v2alpha1` (RHBK 26 API)
      - Instances: 1
-     - External database: postgres-db.rhbk.svc.cluster.local
+     - External database: postgres-db.keycloak.svc.cluster.local
      - Hostname: `keycloak-rhbk.placeholder` (patched by Job #7)
      - **CRITICAL - proxy-headers configuration**:
        - `additionalOptions: [{name: proxy-headers, value: xforwarded}]`
@@ -2056,6 +2056,7 @@ Red Hat's approach creates a more dramatic demo (without HTTPRoute → app break
      - Uses apps domain (not root domain): `keycloak-rhbk.apps.myocp.sandbox3491.opentlc.com`
      - 2 steps, ~5 seconds execution
      - **Automatic re-run**: If Keycloak CR gets deleted/recreated
+     - **Namespace**: Job runs in openshift-gitops namespace, patches resource in keycloak namespace
    - **ArgoCD Application** (`argocd/application-rhbk.yaml`)
      - Project: `solution-patterns-connectivity-link`
      - Path: `kustomize/rhbk`
@@ -2063,19 +2064,56 @@ Red Hat's approach creates a more dramatic demo (without HTTPRoute → app break
    - **Access**: Admin console at `https://keycloak-rhbk.apps.<cluster-domain>`
    - **Admin Credentials**: Secret `keycloak-initial-admin` (username: `temp-admin`)
 
-19. **Keycloak (globex-user1 realm)** (keycloak namespace)
-   - **KeycloakRealmImport** (`keycloak-keycloakrealmimport-globex-user1.yaml`)
-     - Creates `globex-user1` realm in existing Keycloak instance
-     - 3 OAuth clients: `client-manager`, `globex-mobile-gateway`, `globex-mobile`
-     - 8 users: 1 realm admin (`user1`), 5 demo users, 2 service accounts
-     - **⚠️ CONTAINS DEMO SECRETS**: OAuth client secrets from Red Hat Globex workshop materials
-   - **ArgoCD Application** (`argocd/application-keycloak.yaml`)
-     - Name: `keycloak` (not `usecase-connectivity-link-keycloak`)
+19. **Globex E-Commerce Application** (globex-apim-user1 namespace)
+   - **Namespace** (`cluster-ns-globex-apim-user1.yaml`)
+     - Namespace with ArgoCD management label for automatic RBAC
+   - **Monolith Architecture** - All components deployed in single namespace
+   - **Database**: globex-db (PostgreSQL with 41 pre-loaded products)
+     - Secret (`globex-secret-globex-db.yaml`) - **⚠️ DEMO SECRETS**: database credentials
+     - Deployment (`globex-deployment-globex-db.yaml`) - PostgreSQL database
+     - Service (`globex-service-globex-db.yaml`) - ClusterIP exposing port 5432
+     - ServiceAccount (`globex-serviceaccount-globex-db.yaml`)
+     - Image: `quay.io/cloud-architecture-workshop/globex-store-db:latest`
+   - **Backend API**: globex-store-app (Quarkus REST API monolith)
+     - Deployment (`globex-deployment-globex-store-app.yaml`) - Custom NPE-fixed image
+     - Service (`globex-service-globex-store-app.yaml`) - ClusterIP exposing port 8080
+     - ServiceAccount (`globex-serviceaccount-globex-store-app.yaml`)
+     - Image: `quay.io/laurenttourreau/globex-store:npe-fixed`
+     - REST endpoints: `/services/catalog/product`, `/services/catalog/category`
+   - **Mobile Gateway**: globex-mobile-gateway (Quarkus OAuth-enabled API)
+     - Deployment (`globex-deployment-globex-mobile-gateway.yaml`) - OAuth integration with Keycloak
+     - Service (`globex-service-globex-mobile-gateway.yaml`) - ClusterIP exposing port 8080
+     - Route (`globex-route-globex-mobile-gateway.yaml`) - External HTTPS access
+     - ServiceAccount (`globex-serviceaccount-globex-mobile-gateway.yaml`)
+     - Image: `quay.io/cloud-architecture-workshop/globex-mobile-gateway:latest`
+   - **Mobile Frontend**: globex-mobile (Angular SSR with RHBK 26 compatibility)
+     - Deployment (`globex-deployment-globex-mobile.yaml`) - Custom RHBK 26 compatible image
+     - Service (`globex-service-globex-mobile.yaml`) - ClusterIP exposing port 8080
+     - Route (`globex-route-globex-mobile.yaml`) - External HTTPS access
+     - ServiceAccount (`globex-serviceaccount-globex-mobile.yaml`)
+     - Image: `quay.io/laurenttourreau/globex-mobile:rhbk26-authcode-flow-v2`
+   - **Keycloak Realm**: globex-user1 realm (in keycloak namespace)
+     - KeycloakRealmImport (`keycloak-keycloakrealmimport-globex-user1.yaml`)
+     - 2 OAuth clients: `globex-mobile` (public), `globex-mobile-gateway` (confidential)
+     - 2 demo users: `asilva`/`mmiller` with password `openshift`
+     - **⚠️ DEMO SECRETS**: OAuth client secrets from Red Hat Globex workshop
+   - **PostSync Job**: globex-env-setup
+     - Patches environment variables with cluster-specific Keycloak URLs
+     - Patches globex-mobile: `SSO_AUTHORITY`, `SSO_REDIRECT_LOGOUT_URI`
+     - Patches globex-mobile-gateway: `KEYCLOAK_AUTH_SERVER_URL`
+     - Sync wave: 4 (runs after Gateway/HTTPRoute patches)
+   - **ArgoCD Application** (`argocd/application-globex.yaml`)
+     - Name: `globex` (not `usecase-connectivity-link-globex`)
      - Project: `solution-patterns-connectivity-link`
-     - Path: `kustomize/keycloak`
-     - Destination: `keycloak` namespace
+     - Path: `kustomize/globex`
+     - Destination: `globex-apim-user1` namespace
+     - ignoreDifferences: Environment variables patched by Job
+   - **Access**:
+     - Frontend: https://globex-mobile-globex-apim-user1.apps.<cluster-domain>
+     - Gateway API: https://globex-mobile-gateway-globex-apim-user1.apps.<cluster-domain>
+   - **Verified Working**: All routes responding with HTTP 200, realm import successful
 
-20. **Apicurio Studio** (apicurio namespace)
+21. **Apicurio Studio** (apicurio namespace)
    - **Namespace** (`cluster-ns-apicurio.yaml`)
      - **CRITICAL**: Has label `argocd.argoproj.io/managed-by: openshift-gitops` for automatic RBAC
    - **RoleBinding** (`apicurio-rolebinding-argocd.yaml`)
@@ -2143,7 +2181,7 @@ Kustomize Base (43 manifests)
     │   └── Mobile API: globex-mobile-gateway (Deployment + Service + ServiceAccount + Route)
     ├── Keycloak resources (keycloak namespace)
     │   └── KeycloakRealmImport (globex-user1 realm with users and OAuth clients)
-    ├── RHBK stack (rhbk namespace, separate Keycloak instance for Apicurio)
+    ├── RHBK stack (keycloak namespace, separate Keycloak instance for Apicurio)
     │   ├── OperatorGroup + Subscription (RHBK 26.4 operator, namespace-scoped)
     │   ├── Database: postgres-db (Deployment + Service + 2 Secrets)
     │   ├── Keycloak CR (v2alpha1 API, with proxy-headers for OpenShift Route)
@@ -2935,15 +2973,34 @@ See [SECURITY.md](SECURITY.md) for complete security documentation.
 │   │   ├── openshift-gitops-job-productcatalog-httproute.yaml
 │   │   ├── openshift-gitops-cronjob-patch-monitor.yaml
 │   │   └── kustomization.yaml
-│   ├── keycloak/
-│   │   # Keycloak resources (globex-user1 realm)
-│   │   ├── cluster-ns-keycloak.yaml
-│   │   ├── keycloak-keycloak.yaml
+│   ├── globex/
+│   │   # Globex E-Commerce Application (globex-apim-user1 namespace)
+│   │   ├── cluster-ns-globex-apim-user1.yaml
 │   │   ├── keycloak-keycloakrealmimport-globex-user1.yaml    # ⚠️ DEMO SECRETS
+│   │   ├── globex-secret-globex-db.yaml                      # ⚠️ DEMO SECRETS
+│   │   ├── globex-deployment-globex-db.yaml
+│   │   ├── globex-deployment-globex-store-app.yaml           # NPE-fixed custom image
+│   │   ├── globex-deployment-globex-mobile-gateway.yaml
+│   │   ├── globex-deployment-globex-mobile.yaml              # RHBK 26 compatible
+│   │   ├── globex-service-globex-db.yaml
+│   │   ├── globex-service-globex-store-app.yaml
+│   │   ├── globex-service-globex-mobile-gateway.yaml
+│   │   ├── globex-service-globex-mobile.yaml
+│   │   ├── globex-serviceaccount-globex-db.yaml
+│   │   ├── globex-serviceaccount-globex-store-app.yaml
+│   │   ├── globex-serviceaccount-globex-mobile-gateway.yaml
+│   │   ├── globex-serviceaccount-globex-mobile.yaml
+│   │   ├── globex-route-globex-mobile-gateway.yaml
+│   │   ├── globex-route-globex-mobile.yaml
+│   │   ├── openshift-gitops-job-globex-env.yaml
 │   │   └── kustomization.yaml
+│   ├── keycloak/
+│   │   # Keycloak resources (for existing Keycloak instance - NOT deployed by this project)
+│   │   ├── (Keycloak operator and CR deployed by RHBK stack)
+│   │   └── (This directory kept for potential future standalone Keycloak deployment)
 │   ├── rhbk/
 │   │   # RHBK (Red Hat build of Keycloak) resources
-│   │   ├── cluster-ns-rhbk.yaml
+│   │   ├── cluster-ns-keycloak.yaml
 │   │   ├── rhbk-operatorgroup.yaml
 │   │   ├── rhbk-subscription-rhbk-operator.yaml
 │   │   ├── rhbk-secret-postgres-db.yaml
@@ -2970,7 +3027,7 @@ See [SECURITY.md](SECURITY.md) for complete security documentation.
 ├── argocd/
 │   ├── application.yaml
 │   ├── application-rhbk.yaml
-│   ├── application-keycloak.yaml
+│   ├── application-globex.yaml
 │   └── application-apicurio.yaml
 ├── config/
 │   └── cluster.yaml.example    # Cluster configuration template for deployment
@@ -2986,22 +3043,17 @@ See [SECURITY.md](SECURITY.md) for complete security documentation.
 ```
 
 **Manifest Count**:
-- Cluster-scoped: 8 (ClusterRole, ClusterRoleBinding, GatewayClass, 5 Namespaces: echo-api, ingress-gateway, globex, keycloak, rhbk, apicurio)
+- Cluster-scoped: 8 (ClusterRole, ClusterRoleBinding, GatewayClass, 5 Namespaces: echo-api, ingress-gateway, globex-apim-user1, keycloak, apicurio)
 - echo-api: 5 (Deployment, Service, HTTPRoute, AuthPolicy, RateLimitPolicy)
 - ingress-gateway: 8 (Gateway, TLSPolicy, DNSPolicy, 2× AuthPolicy, 2× RateLimitPolicy, 2× HTTPRoute)
-- globex (monolith): 14 (4 deployments, 4 services, 4 service accounts, 1 secret, 1 ReferenceGrant)
-- globex routes: 2 (globex-mobile, globex-mobile-gateway)
-- Keycloak stack: 3 (Namespace, Keycloak CR, KeycloakRealmImport with ⚠️ DEMO SECRETS)
-- RHBK stack: 10 (Namespace, OperatorGroup, Subscription, 2 Secrets, Deployment, Service, Keycloak CR, KeycloakRealmImport, Job)
-- Apicurio stack: 7 (Namespace, RoleBinding, Secret, Deployment, Service, ApicurioRegistry3 CR, Job)
 - Jobs: 8 (AWS credentials, DNS setup, Gateway patch, 2× HTTPRoute patches, Globex env vars, Keycloak hostname, Keycloak realm reimport)
 - CronJob: 1 (Patch monitor - safety net for automatic placeholder patching)
 - **Total base**: 56 manifests (1 kustomization.yaml + 55 resource files)
-- **Total keycloak**: 3 manifests (1 kustomization.yaml + 2 resource files)
-- **Total rhbk**: 10 manifests (1 kustomization.yaml + 9 resource files)
-- **Total apicurio**: 7 manifests (1 kustomization.yaml + 6 resource files)
-- **Total ArgoCD Applications**: 4 (usecase-connectivity-link, keycloak, rhbk, apicurio-studio)
-- **Grand Total**: 80 manifests across all directories
+- **Total globex**: 19 manifests (1 kustomization.yaml + 18 resource files: namespace, realm, 4 DB resources, 3 store-app, 4 mobile-gateway, 4 mobile, 2 routes, Job)
+- **Total rhbk**: 10 manifests (1 kustomization.yaml + 9 resource files: namespace, OperatorGroup, Subscription, 2 Secrets, Deployment, Service, Keycloak CR, KeycloakRealmImport, Job)
+- **Total apicurio**: 7 manifests (1 kustomization.yaml + 6 resource files: namespace, RoleBinding, Secret, Deployment, Service, ApicurioRegistry3 CR, Job)
+- **Total ArgoCD Applications**: 4 (bootstrap-deployment, globex, rhbk, apicurio-studio)
+- **Grand Total**: 92 manifests across all directories (base + globex + rhbk + apicurio)
 
 **File Naming Convention**: `<namespace>-<kind>-<name>.yaml`
 - `cluster-*` for cluster-scoped resources (no namespace)
@@ -3093,7 +3145,7 @@ Everything else is 100% dynamic → Works across different clusters/environments
 - Job `echo-api-httproute-setup` (patches echo-api HTTPRoute hostname)
 - Job `productcatalog-httproute-setup` (patches productcatalog HTTPRoute hostname)
 - Job `globex-env-setup` (patches globex-mobile and globex-mobile-gateway env vars)
-- Job `keycloak-hostname-setup` (patches Keycloak CR hostname in rhbk namespace)
+- Job `keycloak-hostname-setup` (patches Keycloak CR hostname in keycloak namespace)
 - Job `force-realm-reimport` (PreSync hook to delete KeycloakRealmImport for updates)
 
 **Total**: 64 manifests in Git across 2 Kustomize directories (base + rhbk)
