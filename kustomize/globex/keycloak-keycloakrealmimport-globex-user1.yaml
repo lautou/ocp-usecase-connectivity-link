@@ -1,0 +1,137 @@
+apiVersion: k8s.keycloak.org/v2alpha1
+kind: KeycloakRealmImport
+metadata:
+  name: globex-user1
+  namespace: keycloak
+  labels:
+    app: keycloak
+  annotations:
+    argocd.argoproj.io/sync-options: SkipDryRunOnMissingResource=true
+spec:
+  keycloakCRName: keycloak
+  realm:
+    id: globex-user1
+    realm: globex-user1
+    displayName: globex-user1
+    enabled: true
+    sslRequired: external
+    registrationAllowed: false
+    loginWithEmailAllowed: true
+    duplicateEmailsAllowed: false
+    resetPasswordAllowed: false
+    editUsernameAllowed: false
+    bruteForceProtected: false
+    clients:
+      - clientId: globex-mobile
+        name: globex-mobile
+        description: Globex Mobile Application
+        rootUrl: ""
+        adminUrl: ""
+        baseUrl: ""
+        surrogateAuthRequired: false
+        enabled: true
+        alwaysDisplayInConsole: false
+        clientAuthenticatorType: client-secret
+        redirectUris:
+          - "*"
+        webOrigins:
+          - "*"
+        notBefore: 0
+        bearerOnly: false
+        consentRequired: false
+        standardFlowEnabled: true
+        implicitFlowEnabled: false
+        directAccessGrantsEnabled: true
+        serviceAccountsEnabled: false
+        publicClient: true
+        frontchannelLogout: true
+        protocol: openid-connect
+        attributes:
+          oidc.ciba.grant.enabled: "false"
+          client.secret.creation.time: "1710000000"
+          backchannel.logout.session.required: "true"
+          post.logout.redirect.uris: "*"
+          oauth2.device.authorization.grant.enabled: "false"
+          display.on.consent.screen: "false"
+          backchannel.logout.revoke.offline.tokens: "false"
+          pkce.code.challenge.method: S256
+        fullScopeAllowed: true
+        nodeReRegistrationTimeout: -1
+        defaultClientScopes:
+          - web-origins
+          - acr
+          - profile
+          - roles
+          - email
+        optionalClientScopes:
+          - address
+          - phone
+          - offline_access
+          - microprofile-jwt
+      - clientId: globex-mobile-gateway
+        name: globex-mobile-gateway
+        description: Globex Mobile Gateway API
+        rootUrl: ""
+        adminUrl: ""
+        baseUrl: ""
+        surrogateAuthRequired: false
+        enabled: true
+        alwaysDisplayInConsole: false
+        clientAuthenticatorType: client-secret
+        secret: globex-mobile-gateway-secret  # DEMO SECRET
+        redirectUris:
+          - "*"
+        webOrigins:
+          - "*"
+        notBefore: 0
+        bearerOnly: false
+        consentRequired: false
+        standardFlowEnabled: true
+        implicitFlowEnabled: true
+        directAccessGrantsEnabled: true
+        serviceAccountsEnabled: false
+        publicClient: false
+        frontchannelLogout: true
+        protocol: openid-connect
+        attributes:
+          oidc.ciba.grant.enabled: "false"
+          client.secret.creation.time: "1710000000"
+          backchannel.logout.session.required: "true"
+          post.logout.redirect.uris: "*"
+          oauth2.device.authorization.grant.enabled: "false"
+          display.on.consent.screen: "false"
+          backchannel.logout.revoke.offline.tokens: "false"
+        fullScopeAllowed: true
+        nodeReRegistrationTimeout: -1
+        defaultClientScopes:
+          - web-origins
+          - acr
+          - profile
+          - roles
+          - email
+        optionalClientScopes:
+          - address
+          - phone
+          - offline_access
+          - microprofile-jwt
+    users:
+      - username: asilva
+        enabled: true
+        emailVerified: true
+        firstName: Addison
+        lastName: Silva
+        email: asilva@globex.com
+        credentials:
+          - type: password
+            value: openshift  # DEMO SECRET
+            temporary: false
+      - username: mmiller
+        enabled: true
+        emailVerified: true
+        firstName: Madison
+        lastName: Miller
+        email: mmiller@globex.com
+        credentials:
+          - type: password
+            value: openshift  # DEMO SECRET
+            temporary: false

@@ -1,0 +1,32 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+  # Namespace
+  - cluster-ns-globex-apim-user1.yaml
+
+  # Keycloak Realm Import (in keycloak namespace)
+  - keycloak-keycloakrealmimport-globex-user1.yaml
+
+  # Database
+  - globex-secret-globex-db.yaml
+  - globex-deployment-globex-db.yaml
+  - globex-service-globex-db.yaml
+  - globex-serviceaccount-globex-db.yaml
+
+  # Backend API
+  - globex-deployment-globex-store-app.yaml
+  - globex-service-globex-store-app.yaml
+  - globex-serviceaccount-globex-store-app.yaml
+
+  # Mobile Gateway
+  - globex-deployment-globex-mobile-gateway.yaml
+  - globex-service-globex-mobile-gateway.yaml
+  - globex-serviceaccount-globex-mobile-gateway.yaml
+  - globex-route-globex-mobile-gateway.yaml
+
+  # Mobile Frontend
+  - globex-deployment-globex-mobile.yaml
+  - globex-service-globex-mobile.yaml
+  - globex-serviceaccount-globex-mobile.yaml
+  - globex-route-globex-mobile.yaml

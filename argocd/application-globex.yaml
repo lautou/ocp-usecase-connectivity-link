@@ -1,0 +1,37 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: globex
+  namespace: openshift-gitops
+  labels:
+    app.kubernetes.io/name: globex
+    app.kubernetes.io/part-of: solution-patterns-connectivity-link
+spec:
+  project: solution-patterns-connectivity-link
+  source:
+    repoURL: https://github.com/lautou/ocp-usecase-connectivity-link.git
+    targetRevision: main
+    path: kustomize/globex
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: globex-apim-user1
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+  ignoreDifferences:
+    # Ignore runtime-patched environment variables
+    - group: apps
+      kind: Deployment
+      name: globex-mobile
+      jsonPointers:
+        - /spec/template/spec/initContainers/0/env/0/value
+        - /spec/template/spec/containers/0/env/2/value
+        - /spec/template/spec/containers/0/env/3/value
+    - group: apps
+      kind: Deployment
+      name: globex-mobile-gateway
+      jsonPointers:
+        - /spec/template/spec/containers/0/env/1/value

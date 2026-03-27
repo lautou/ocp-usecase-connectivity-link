@@ -1,0 +1,20 @@
+apiVersion: route.openshift.io/v1
+kind: Route
+metadata:
+  name: globex-mobile-gateway
+  namespace: globex-apim-user1
+  labels:
+    app: globex-mobile-gateway
+    app.kubernetes.io/name: globex-mobile-gateway
+    app.kubernetes.io/part-of: globex
+spec:
+  port:
+    targetPort: http
+  tls:
+    termination: edge
+    insecureEdgeTerminationPolicy: Redirect
+  to:
+    kind: Service
+    name: globex-mobile-gateway
+    weight: 100
+  wildcardPolicy: None

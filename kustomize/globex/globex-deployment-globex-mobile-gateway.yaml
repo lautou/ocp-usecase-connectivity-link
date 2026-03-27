@@ -1,0 +1,64 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: globex-mobile-gateway
+  namespace: globex-apim-user1
+  labels:
+    app: globex-mobile-gateway
+    app.kubernetes.io/name: globex-mobile-gateway
+    app.kubernetes.io/part-of: globex
+    app.openshift.io/runtime: quarkus
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: globex-mobile-gateway
+  template:
+    metadata:
+      labels:
+        app: globex-mobile-gateway
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        seccompProfile:
+          type: RuntimeDefault
+      serviceAccountName: globex-mobile-gateway
+      containers:
+        - name: globex-mobile-gateway
+          image: quay.io/cloud-architecture-workshop/globex-mobile-gateway:latest
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: http
+              containerPort: 8080
+              protocol: TCP
+          livenessProbe:
+            httpGet:
+              path: /q/health/live
+              port: http
+            initialDelaySeconds: 30
+            periodSeconds: 10
+            timeoutSeconds: 3
+          readinessProbe:
+            httpGet:
+              path: /q/health/ready
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 10
+            timeoutSeconds: 3
+          resources:
+            limits:
+              cpu: 250m
+              memory: 250Mi
+            requests:
+              cpu: 100m
+              memory: 128Mi
+          env:
+            - name: GLOBEX_STORE_APP_URL
+              value: http://globex-store-app:8080
+            - name: KEYCLOAK_AUTH_SERVER_URL
+              value: placeholder  # Will be patched by Job
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - ALL

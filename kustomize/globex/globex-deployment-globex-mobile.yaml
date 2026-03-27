@@ -1,0 +1,101 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: globex-mobile
+  namespace: globex-apim-user1
+  labels:
+    app: globex-mobile
+    app.kubernetes.io/name: globex-mobile
+    app.kubernetes.io/part-of: globex
+    app.openshift.io/runtime: nodejs
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: globex-mobile
+  template:
+    metadata:
+      labels:
+        app: globex-mobile
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        seccompProfile:
+          type: RuntimeDefault
+      serviceAccountName: globex-mobile
+      initContainers:
+        - name: patch-placeholder
+          image: quay.io/laurenttourreau/globex-mobile:rhbk26-authcode-flow-v2
+          imagePullPolicy: IfNotPresent
+          command:
+            - /bin/sh
+            - -c
+            - |
+              cp -r /opt/app-root/src/dist/globex-mobile/browser/* /app-files/
+              APPS_DOMAIN=$(echo "${SSO_AUTHORITY}" | sed 's|https://keycloak-keycloak.||' | sed 's|/realms/.*||')
+              echo "Apps domain: ${APPS_DOMAIN}"
+              find /app-files -name "*.js" -type f -exec sed -i "s/placeholder/${APPS_DOMAIN}/g" {} \;
+              echo "Placeholder domains replaced with ${APPS_DOMAIN}"
+          env:
+            - name: SSO_AUTHORITY
+              value: placeholder  # Will be patched by Job
+          volumeMounts:
+            - name: app-files
+              mountPath: /app-files
+      containers:
+        - name: globex-mobile
+          image: quay.io/laurenttourreau/globex-mobile:rhbk26-authcode-flow-v2
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: http
+              containerPort: 8080
+              protocol: TCP
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8080
+              scheme: HTTP
+            initialDelaySeconds: 30
+            periodSeconds: 10
+            timeoutSeconds: 3
+            failureThreshold: 3
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8080
+              scheme: HTTP
+            initialDelaySeconds: 5
+            periodSeconds: 10
+            timeoutSeconds: 3
+            failureThreshold: 3
+          resources:
+            limits:
+              cpu: 200m
+              memory: 256Mi
+            requests:
+              cpu: 100m
+              memory: 128Mi
+          env:
+            - name: NODE_ENV
+              value: prod
+            - name: GLOBEX_MOBILE_GATEWAY
+              value: http://globex-mobile-gateway:8080
+            - name: SSO_CUSTOM_CONFIG
+              value: globex-mobile
+            - name: SSO_AUTHORITY
+              value: placeholder  # Will be patched by Job
+            - name: SSO_REDIRECT_LOGOUT_URI
+              value: placeholder  # Will be patched by Job
+            - name: SSO_LOG_LEVEL
+              value: "2"
+          volumeMounts:
+            - name: app-files
+              mountPath: /opt/app-root/src/dist/globex-mobile/browser
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - ALL
+      volumes:
+        - name: app-files
+          emptyDir: {}

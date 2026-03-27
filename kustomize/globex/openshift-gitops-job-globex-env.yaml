@@ -1,0 +1,47 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: globex-env-setup
+  namespace: openshift-gitops
+  annotations:
+    argocd.argoproj.io/hook: PostSync
+    argocd.argoproj.io/hook-delete-policy: BeforeHookCreation
+    argocd.argoproj.io/sync-wave: "4"
+    argocd.argoproj.io/sync-options: Force=true
+spec:
+  template:
+    spec:
+      serviceAccountName: openshift-gitops-argocd-application-controller
+      restartPolicy: Never
+      containers:
+        - name: patch-globex-env
+          image: image-registry.openshift-image-registry.svc:5000/openshift/cli:latest
+          command:
+            - /bin/bash
+            - -c
+            - |
+              set -e
+              echo "Extracting cluster domain..."
+              BASE_DOMAIN=$(oc get dns cluster -o jsonpath='{.spec.baseDomain}')
+              APPS_DOMAIN="apps.${BASE_DOMAIN}"
+              KEYCLOAK_URL="https://keycloak-keycloak.${APPS_DOMAIN}/realms/globex-user1"
+
+              echo "Cluster domain: ${BASE_DOMAIN}"
+              echo "Apps domain: ${APPS_DOMAIN}"
+              echo "Keycloak URL: ${KEYCLOAK_URL}"
+
+              # Patch globex-mobile deployment (initContainer + main container)
+              echo "Patching globex-mobile deployment..."
+              oc patch deployment globex-mobile -n globex-apim-user1 --type=json -p='[
+                {"op": "replace", "path": "/spec/template/spec/initContainers/0/env/0/value", "value": "'"${KEYCLOAK_URL}"'"},
+                {"op": "replace", "path": "/spec/template/spec/containers/0/env/2/value", "value": "'"${KEYCLOAK_URL}"'"},
+                {"op": "replace", "path": "/spec/template/spec/containers/0/env/3/value", "value": "https://globex-mobile-globex-apim-user1.'"${APPS_DOMAIN}"'"}
+              ]'
+
+              # Patch globex-mobile-gateway deployment
+              echo "Patching globex-mobile-gateway deployment..."
+              oc patch deployment globex-mobile-gateway -n globex-apim-user1 --type=json -p='[
+                {"op": "replace", "path": "/spec/template/spec/containers/0/env/1/value", "value": "'"${KEYCLOAK_URL}"'"}
+              ]'
+
+              echo "Environment variables patched successfully"
