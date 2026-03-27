@@ -1,0 +1,39 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: rhbk-hostname-setup
+  namespace: openshift-gitops
+  annotations:
+    argocd.argoproj.io/hook: PostSync
+    argocd.argoproj.io/hook-delete-policy: BeforeHookCreation
+    argocd.argoproj.io/sync-wave: "2"
+    argocd.argoproj.io/sync-options: Force=true
+spec:
+  template:
+    spec:
+      serviceAccountName: openshift-gitops-argocd-application-controller
+      restartPolicy: Never
+      containers:
+        - name: patch-keycloak-hostname
+          image: image-registry.openshift-image-registry.svc:5000/openshift/cli:latest
+          command:
+            - /bin/bash
+            - -c
+            - |
+              set -e
+              echo "Extracting cluster domain..."
+              BASE_DOMAIN=$(oc get dns cluster -o jsonpath='{.spec.baseDomain}')
+              APPS_DOMAIN="apps.${BASE_DOMAIN}"
+              KEYCLOAK_HOSTNAME="keycloak-keycloak.${APPS_DOMAIN}"
+              KEYCLOAK_ADMIN_URL="https://keycloak-keycloak.${APPS_DOMAIN}"
+
+              echo "Cluster domain: ${BASE_DOMAIN}"
+              echo "Apps domain: ${APPS_DOMAIN}"
+              echo "Keycloak hostname: ${KEYCLOAK_HOSTNAME}"
+              echo "Keycloak admin URL: ${KEYCLOAK_ADMIN_URL}"
+
+              # Patch Keycloak hostname
+              echo "Patching Keycloak CR hostname..."
+              oc patch keycloak keycloak -n keycloak --type=merge -p='{"spec":{"hostname":{"hostname":"'"${KEYCLOAK_HOSTNAME}"'","adminUrl":"'"${KEYCLOAK_ADMIN_URL}"'"}}}'
+
+              echo "Keycloak hostname patched successfully"
