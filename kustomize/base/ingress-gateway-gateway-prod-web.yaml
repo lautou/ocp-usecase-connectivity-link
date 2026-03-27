@@ -6,6 +6,7 @@ metadata:
   labels:
     app.kubernetes.io/part-of: connectivity-link
     argocd.argoproj.io/managed-by: openshift-gitops
+    kuadrant.io/lb-attribute-geo-code: EU
 spec:
   gatewayClassName: istio
   listeners:
