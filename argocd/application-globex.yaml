@@ -33,4 +33,4 @@ spec:
       kind: Deployment
       name: globex-mobile-gateway
       jsonPointers:
-        - /spec/template/spec/containers/0/env/1/value      # SSO_AUTHORITY
+        - /spec/template/spec/containers/0/env/1/value      # KEYCLOAK_AUTH_SERVER_URL
