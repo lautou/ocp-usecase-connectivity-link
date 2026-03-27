@@ -57,6 +57,8 @@ spec:
               value: http://globex-store-app:8080
             - name: KEYCLOAK_AUTH_SERVER_URL
               value: placeholder  # Will be patched by Job
+            - name: QUARKUS_OIDC_TOKEN_AUDIENCE
+              value: globex-mobile
           securityContext:
             allowPrivilegeEscalation: false
             capabilities:
