@@ -17,6 +17,3 @@ resources:
   # Keycloak Instance
   - rhbk-secret-keycloak-db-password.yaml
   - rhbk-keycloak.yaml
-
-  # PostSync Job to patch Keycloak hostname
-  - openshift-gitops-job-rhbk-hostname.yaml

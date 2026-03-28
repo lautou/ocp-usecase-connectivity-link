@@ -12,13 +12,10 @@ spec:
     repoURL: https://github.com/lautou/ocp-usecase-connectivity-link.git
     targetRevision: main
     path: kustomize/ingress-gateway
+    plugin:
+      name: cluster-domain-replacer
   destination:
     server: https://kubernetes.default.svc
-  ignoreDifferences:
-    - group: gateway.networking.k8s.io
-      kind: Gateway
-      jsonPointers:
-        - /spec/listeners/0/hostname
   syncPolicy:
     automated:
       prune: true

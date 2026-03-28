@@ -12,4 +12,3 @@ resources:
   - ingress-gateway-servicemonitor-prod-web.yaml
   - ingress-gateway-tlspolicy-prod-web.yaml
   - openshift-gitops-job-aws-credentials.yaml
-  - openshift-gitops-job-gateway-prod-web.yaml

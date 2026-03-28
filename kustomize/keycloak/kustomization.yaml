@@ -20,6 +20,3 @@ resources:
 
   # Realm import
   - keycloak-keycloakrealmimport-apicurio.yaml
-
-  # Job
-  - openshift-gitops-job-keycloak-hostname.yaml

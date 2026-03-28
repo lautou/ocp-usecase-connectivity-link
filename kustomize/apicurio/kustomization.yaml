@@ -15,6 +15,3 @@ resources:
 
   # Apicurio Registry 3
   - apicurio-apicurioregistry3-apicurio-studio.yaml
-
-  # Job
-  - openshift-gitops-job-apicurio-hostname.yaml

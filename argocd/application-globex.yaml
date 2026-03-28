@@ -12,6 +12,8 @@ spec:
     repoURL: https://github.com/lautou/ocp-usecase-connectivity-link.git
     targetRevision: main
     path: kustomize/globex
+    plugin:
+      name: cluster-domain-replacer
   destination:
     server: https://kubernetes.default.svc
   syncPolicy:
@@ -20,18 +22,3 @@ spec:
       selfHeal: true
     syncOptions:
       - CreateNamespace=true
-  ignoreDifferences:
-    # Ignore runtime-patched environment variables (PostSync Job replaces placeholders)
-    - group: apps
-      kind: Deployment
-      name: globex-mobile
-      jsonPointers:
-        - /spec/template/spec/initContainers/0/env/0/value  # SSO_AUTHORITY (initContainer)
-        - /spec/template/spec/containers/0/env/2/value      # GLOBEX_MOBILE_GATEWAY
-        - /spec/template/spec/containers/0/env/4/value      # SSO_AUTHORITY
-        - /spec/template/spec/containers/0/env/5/value      # SSO_REDIRECT_LOGOUT_URI
-    - group: apps
-      kind: Deployment
-      name: globex-mobile-gateway
-      jsonPointers:
-        - /spec/template/spec/containers/0/env/2/value      # KEYCLOAK_AUTH_SERVER_URL

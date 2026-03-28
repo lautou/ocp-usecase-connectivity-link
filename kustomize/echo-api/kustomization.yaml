@@ -7,4 +7,3 @@ resources:
   - echo-api-deployment-echo-api.yaml
   - echo-api-httproute-echo-api.yaml
   - echo-api-service-echo-api.yaml
-  - openshift-gitops-job-echo-api-httproute.yaml

@@ -30,6 +30,3 @@ resources:
   - globex-service-globex-mobile.yaml
   - globex-serviceaccount-globex-mobile.yaml
   - globex-route-globex-mobile.yaml
-
-  # PostSync Job to patch environment variables
-  - openshift-gitops-job-globex-env.yaml
