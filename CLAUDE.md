@@ -33,84 +33,100 @@ spec:
 
 **Enforcement**: All YAML files in `kustomize/` MUST follow this ordering
 
-### PostSync Jobs and Placeholder URLs
+### Config Management Plugin (CMP) and Domain Placeholders
 
-**CRITICAL SYSTEM**: This project uses ArgoCD PostSync Jobs to patch runtime-specific values (cluster domains) into manifests.
+**CRITICAL SYSTEM**: This project uses ArgoCD Config Management Plugin (CMP) to replace cluster-specific domain placeholders during manifest generation.
 
-**Why Placeholders:**
-- Git manifests contain `placeholder` values for cluster-specific URLs
-- PostSync Jobs extract actual cluster domain and patch resources
-- Allows same Git repo to work on any OpenShift cluster
+**Why CMP:**
+- Git manifests contain domain placeholders (`CLUSTER_DOMAIN`, `ROOT_DOMAIN`)
+- CMP queries OpenShift DNS API to discover actual cluster domain
+- Replacements happen during manifest generation (before Kubernetes validation)
+- Works with partial sync, auto-sync, and all ArgoCD features
+- No ignoreDifferences needed (Git is source of truth)
 
-**PostSync Jobs:**
+**How It Works:**
 
-1. **ingress-gateway**: `gateway-prod-web-setup`
-   - Patches: Gateway `prod-web` hostname from `*.globex.placeholder` → `*.globex.<root-domain>`
-   - Path: `/spec/listeners/0/hostname`
-   - Sync wave: 3
+1. **ArgoCD detects kustomization.yaml** in repository path
+2. **CMP sidecar is invoked** via plugin discovery (finds `**/kustomization.yaml`)
+3. **CMP queries DNS object**:
+   ```bash
+   curl https://kubernetes.default.svc/apis/config.openshift.io/v1/dnses/cluster
+   # Returns: { "spec": { "baseDomain": "myocp.sandbox3491.opentlc.com" } }
+   ```
+4. **CMP calculates domain values**:
+   ```bash
+   BASE_DOMAIN="myocp.sandbox3491.opentlc.com"     # From DNS API
+   CLUSTER_DOMAIN="apps.${BASE_DOMAIN}"            # OpenShift routes domain
+   ROOT_DOMAIN=$(echo "${BASE_DOMAIN}" | sed 's/^[^.]*\.//')  # Gateway API domain
+   ```
+5. **CMP builds and transforms manifests**:
+   ```bash
+   kustomize build . | sed "s|CLUSTER_DOMAIN|${CLUSTER_DOMAIN}|g; s|ROOT_DOMAIN|${ROOT_DOMAIN}|g"
+   ```
 
-2. **echo-api**: `echo-api-httproute-setup`
-   - Patches: HTTPRoute `echo-api` hostname from `echo.globex.placeholder` → `echo.globex.<root-domain>`
-   - Path: `/spec/hostnames/0`
-   - Sync wave: 3
+**Domain Placeholder Usage:**
 
-3. **globex**: `globex-env-setup`
-   - Patches: Deployment `globex-mobile` env vars (SSO_AUTHORITY, SSO_REDIRECT_LOGOUT_URI)
-   - Patches: Deployment `globex-mobile-gateway` env var (KEYCLOAK_AUTH_SERVER_URL)
-   - **CRITICAL ENV INDEXES** (must match git manifest order):
-     - `globex-mobile` initContainer: env[0] = SSO_AUTHORITY
-     - `globex-mobile` container: env[4] = SSO_AUTHORITY, env[5] = SSO_REDIRECT_LOGOUT_URI
-     - `globex-mobile-gateway` container: env[2] = KEYCLOAK_AUTH_SERVER_URL
-   - Sync wave: 4
+- **CLUSTER_DOMAIN** (`apps.myocp.sandbox3491.opentlc.com`):
+  - OpenShift Routes
+  - Keycloak URLs
+  - All services using OpenShift ingress
 
-**ArgoCD ignoreDifferences Protection:**
-- All PostSync-patched fields are protected via `ignoreDifferences` in Application manifests
-- Prevents ArgoCD selfHeal from reverting PostSync Job changes back to placeholder
-- **Example**: `application-globex.yaml` ignores env indexes 0, 4, 5 for globex-mobile and index 2 for globex-mobile-gateway
+- **ROOT_DOMAIN** (`sandbox3491.opentlc.com`):
+  - Gateway API hostnames
+  - DNS delegation zone
+  - External DNS records
 
-**Common Issues and Fixes:**
+**CMP Configuration:**
 
-| Issue | Symptom | Fix |
-|-------|---------|-----|
-| **Wrong env index** | Deployment crashes with "URI is not absolute" | Update PostSync Job to patch correct env index matching git manifest |
-| **PostSync Job didn't run** | Resources still show `placeholder` in cluster | Delete Job, trigger ArgoCD sync, or manually apply Job |
-| **ignoreDifferences missing** | ArgoCD reverts PostSync changes | Add field path to Application `ignoreDifferences` |
-| **Env order changed in git** | PostSync Job patches wrong env var | Update both Job patch index AND Application ignoreDifferences index |
+Located in `argocd/openshift-gitops-configmap-cmp-plugin.yaml`:
+- **Plugin name**: `cluster-domain-replacer`
+- **Discovery**: Matches repositories with `kustomization.yaml`
+- **Generate**: Runs kustomize + sed replacements
+- **Authentication**: Uses ServiceAccount token from repo-server pod
+- **RBAC**: ClusterRole `argocd-cmp-dns-reader` grants DNS read permission
 
 **Verification Commands:**
 ```bash
-# Check if placeholder URLs are replaced
+# Check if domain placeholders are replaced
 oc get gateway prod-web -n ingress-gateway -o jsonpath='{.spec.listeners[0].hostname}'
-# Should be: *.globex.<root-domain>, NOT: *.globex.placeholder
+# Should be: *.globex.sandbox3491.opentlc.com
 
 oc get httproute echo-api -n echo-api -o jsonpath='{.spec.hostnames[0]}'
-# Should be: echo.globex.<root-domain>, NOT: echo.globex.placeholder
+# Should be: echo.globex.sandbox3491.opentlc.com
 
-oc get deployment globex-mobile-gateway -n globex-apim-user1 -o jsonpath='{.spec.template.spec.containers[0].env[2].value}'
-# Should be: https://keycloak-keycloak.apps.<base-domain>/realms/globex-user1, NOT: placeholder
+oc get deployment globex-mobile-gateway -n globex-apim-user1 -o jsonpath='{.spec.template.spec.containers[0].env[?(@.name=="KEYCLOAK_AUTH_SERVER_URL")].value}'
+# Should be: https://keycloak-keycloak.apps.myocp.sandbox3491.opentlc.com/realms/globex-user1
 
-# Check PostSync Job status
-oc get job -n openshift-gitops | grep setup
-# All should show STATUS: Complete
+# Check CMP sidecar is running
+oc get pods -n openshift-gitops -l app.kubernetes.io/name=openshift-gitops-repo-server
+# Should show: 2/2 Running (main container + cmp sidecar)
 
-# Check PostSync Job logs
-oc logs job/globex-env-setup -n openshift-gitops
-oc logs job/echo-api-httproute-setup -n openshift-gitops
-oc logs job/gateway-prod-web-setup -n openshift-gitops
+# Check CMP plugin logs
+oc logs -n openshift-gitops -l app.kubernetes.io/name=openshift-gitops-repo-server -c cmp-cluster-domain --tail=50
+# Should show: [CMP] Discovered BASE_DOMAIN: myocp.sandbox3491.opentlc.com
 ```
 
 **Troubleshooting:**
 ```bash
-# Force PostSync Job re-run
-oc delete job globex-env-setup echo-api-httproute-setup gateway-prod-web-setup -n openshift-gitops
-oc patch application.argoproj.io globex echo-api ingress-gateway -n openshift-gitops \
-  --type merge -p '{"operation":{"initiatedBy":{"username":"admin"},"sync":{"revision":"main"}}}'
+# Clear ArgoCD cache and force re-generation
+oc delete pod -n openshift-gitops -l app.kubernetes.io/name=openshift-gitops-redis
+argocd app get <app-name> --hard-refresh
+argocd app sync <app-name>
 
-# Manually patch if PostSync Job fails (globex-mobile-gateway example)
-BASE_DOMAIN=$(oc get dns cluster -o jsonpath='{.spec.baseDomain}')
-KEYCLOAK_URL="https://keycloak-keycloak.apps.${BASE_DOMAIN}/realms/globex-user1"
-oc patch deployment globex-mobile-gateway -n globex-apim-user1 --type=json \
-  -p='[{"op": "replace", "path": "/spec/template/spec/containers/0/env/2/value", "value": "'"${KEYCLOAK_URL}"'"}]'
+# Test CMP plugin manually
+POD=$(oc get pods -n openshift-gitops -l app.kubernetes.io/name=openshift-gitops-repo-server -o name | head -1)
+oc exec -n openshift-gitops $POD -c cmp-cluster-domain -- sh -c '
+KUBE_TOKEN=$(cat /var/run/secrets/kubernetes.io/serviceaccount/token)
+curl -s -H "Authorization: Bearer ${KUBE_TOKEN}" \
+  --cacert /var/run/secrets/kubernetes.io/serviceaccount/ca.crt \
+  https://kubernetes.default.svc/apis/config.openshift.io/v1/dnses/cluster | grep baseDomain
+'
+# Should return: "baseDomain": "myocp.sandbox3491.opentlc.com"
+
+# Verify RBAC permissions
+oc auth can-i get dnses.config.openshift.io \
+  --as=system:serviceaccount:openshift-gitops:openshift-gitops-repo-server
+# Should return: yes
 ```
 
 ### Security Rules

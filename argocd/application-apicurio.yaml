@@ -11,8 +11,6 @@ spec:
     repoURL: https://github.com/lautou/ocp-usecase-connectivity-link.git
     targetRevision: main
     path: kustomize/apicurio
-    plugin:
-      name: cluster-domain-replacer
   destination:
     server: https://kubernetes.default.svc
     namespace: apicurio
