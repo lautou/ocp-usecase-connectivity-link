@@ -55,6 +55,8 @@ spec:
           env:
             - name: GLOBEX_STORE_APP_URL
               value: http://globex-store-app:8080
+            - name: QUARKUS_REST_CLIENT_GLOBEX_STORE_API_URL
+              value: http://globex-store-app:8080
             - name: KEYCLOAK_AUTH_SERVER_URL
               value: placeholder  # Will be patched by Job
             - name: QUARKUS_OIDC_TOKEN_AUDIENCE
