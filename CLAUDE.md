@@ -33,6 +33,86 @@ spec:
 
 **Enforcement**: All YAML files in `kustomize/` MUST follow this ordering
 
+### PostSync Jobs and Placeholder URLs
+
+**CRITICAL SYSTEM**: This project uses ArgoCD PostSync Jobs to patch runtime-specific values (cluster domains) into manifests.
+
+**Why Placeholders:**
+- Git manifests contain `placeholder` values for cluster-specific URLs
+- PostSync Jobs extract actual cluster domain and patch resources
+- Allows same Git repo to work on any OpenShift cluster
+
+**PostSync Jobs:**
+
+1. **ingress-gateway**: `gateway-prod-web-setup`
+   - Patches: Gateway `prod-web` hostname from `*.globex.placeholder` → `*.globex.<root-domain>`
+   - Path: `/spec/listeners/0/hostname`
+   - Sync wave: 3
+
+2. **echo-api**: `echo-api-httproute-setup`
+   - Patches: HTTPRoute `echo-api` hostname from `echo.globex.placeholder` → `echo.globex.<root-domain>`
+   - Path: `/spec/hostnames/0`
+   - Sync wave: 3
+
+3. **globex**: `globex-env-setup`
+   - Patches: Deployment `globex-mobile` env vars (SSO_AUTHORITY, SSO_REDIRECT_LOGOUT_URI)
+   - Patches: Deployment `globex-mobile-gateway` env var (KEYCLOAK_AUTH_SERVER_URL)
+   - **CRITICAL ENV INDEXES** (must match git manifest order):
+     - `globex-mobile` initContainer: env[0] = SSO_AUTHORITY
+     - `globex-mobile` container: env[4] = SSO_AUTHORITY, env[5] = SSO_REDIRECT_LOGOUT_URI
+     - `globex-mobile-gateway` container: env[2] = KEYCLOAK_AUTH_SERVER_URL
+   - Sync wave: 4
+
+**ArgoCD ignoreDifferences Protection:**
+- All PostSync-patched fields are protected via `ignoreDifferences` in Application manifests
+- Prevents ArgoCD selfHeal from reverting PostSync Job changes back to placeholder
+- **Example**: `application-globex.yaml` ignores env indexes 0, 4, 5 for globex-mobile and index 2 for globex-mobile-gateway
+
+**Common Issues and Fixes:**
+
+| Issue | Symptom | Fix |
+|-------|---------|-----|
+| **Wrong env index** | Deployment crashes with "URI is not absolute" | Update PostSync Job to patch correct env index matching git manifest |
+| **PostSync Job didn't run** | Resources still show `placeholder` in cluster | Delete Job, trigger ArgoCD sync, or manually apply Job |
+| **ignoreDifferences missing** | ArgoCD reverts PostSync changes | Add field path to Application `ignoreDifferences` |
+| **Env order changed in git** | PostSync Job patches wrong env var | Update both Job patch index AND Application ignoreDifferences index |
+
+**Verification Commands:**
+```bash
+# Check if placeholder URLs are replaced
+oc get gateway prod-web -n ingress-gateway -o jsonpath='{.spec.listeners[0].hostname}'
+# Should be: *.globex.<root-domain>, NOT: *.globex.placeholder
+
+oc get httproute echo-api -n echo-api -o jsonpath='{.spec.hostnames[0]}'
+# Should be: echo.globex.<root-domain>, NOT: echo.globex.placeholder
+
+oc get deployment globex-mobile-gateway -n globex-apim-user1 -o jsonpath='{.spec.template.spec.containers[0].env[2].value}'
+# Should be: https://keycloak-keycloak.apps.<base-domain>/realms/globex-user1, NOT: placeholder
+
+# Check PostSync Job status
+oc get job -n openshift-gitops | grep setup
+# All should show STATUS: Complete
+
+# Check PostSync Job logs
+oc logs job/globex-env-setup -n openshift-gitops
+oc logs job/echo-api-httproute-setup -n openshift-gitops
+oc logs job/gateway-prod-web-setup -n openshift-gitops
+```
+
+**Troubleshooting:**
+```bash
+# Force PostSync Job re-run
+oc delete job globex-env-setup echo-api-httproute-setup gateway-prod-web-setup -n openshift-gitops
+oc patch application.argoproj.io globex echo-api ingress-gateway -n openshift-gitops \
+  --type merge -p '{"operation":{"initiatedBy":{"username":"admin"},"sync":{"revision":"main"}}}'
+
+# Manually patch if PostSync Job fails (globex-mobile-gateway example)
+BASE_DOMAIN=$(oc get dns cluster -o jsonpath='{.spec.baseDomain}')
+KEYCLOAK_URL="https://keycloak-keycloak.apps.${BASE_DOMAIN}/realms/globex-user1"
+oc patch deployment globex-mobile-gateway -n globex-apim-user1 --type=json \
+  -p='[{"op": "replace", "path": "/spec/template/spec/containers/0/env/2/value", "value": "'"${KEYCLOAK_URL}"'"}]'
+```
+
 ### Security Rules
 
 - ⚠️ **DEMO SECRETS** in `keycloak-keycloakrealmimport-globex-user1.yaml` - OAuth client secrets
@@ -55,12 +135,62 @@ spec:
   - globex-store-app (Quarkus backend - NPE-fixed custom image)
   - globex-mobile (Angular frontend - RHBK 26 compatible custom image)
   - globex-mobile-gateway (Quarkus mobile API with OAuth)
+    - **Note:** Acts as **ProductInfo service** in the architecture narrative
+    - Simulates external product catalog API for Gateway API demonstration
+    - See `docs/architecture/external-service-simulation.md` for rationale
 - **RHBK 26**: Red Hat build of Keycloak in `keycloak` namespace
 - **Apicurio Studio**: Schema registry in `apicurio` namespace
 
 ### Custom Images (Bug Fixes)
 - `quay.io/laurenttourreau/globex-store:npe-fixed` - Fixes NullPointerException in CatalogResource.java
-- `quay.io/laurenttourreau/globex-mobile:rhbk26-authcode-flow-v2` - RHBK 26 OAuth Code Flow + PKCE
+- `quay.io/laurenttourreau/globex-mobile:rhbk26-authcode-flow-v3` - RHBK 26 OAuth Code Flow + PKCE + No offline_access scope
+  - **v3 changes**: Removed offline_access scope requests to prevent Keycloak token exchange errors
+  - Built with: `container-images/globex-web/Containerfile.globex-mobile`
+  - Patches: response_type, usePkce, and removes offline_access from JavaScript bundle
+
+## Architecture Philosophy
+
+### ProductInfo Service - External API Simulation
+
+**CRITICAL CONCEPT:** This project demonstrates **Gateway API for consuming external services**.
+
+**globex-mobile-gateway deployment** represents **ProductInfo service**, an external product catalog API:
+
+**Conceptual Role (Documentation/Narrative):**
+- External product information service (like Akeneo, commercetools)
+- Partner product catalog API
+- Microservice owned by separate team
+
+**Technical Reality (Deployment):**
+- Deployed as `globex-mobile-gateway` in same cluster
+- For demo simplicity and reproducibility
+- But architecturally treated as external dependency
+
+**Why This Matters:**
+
+In modern applications, consuming external services is common:
+- Product catalogs from data providers
+- Payment APIs (Stripe, PayPal)
+- Shipping/logistics APIs
+- Inventory management systems
+
+**Gateway API demonstrates:**
+- ✅ How to consume external APIs with policies (rate limiting, auth)
+- ✅ Realistic architecture pattern for production
+- ✅ Separation between internal (ClusterIP) and external (Gateway API) services
+
+**Architecture Pattern:**
+```
+globex-mobile (Frontend)
+  → Gateway API HTTPRoute → ProductInfo service (external - simulated)
+  → ClusterIP (internal) → globex-store-app (internal backend)
+```
+
+**See:** `docs/architecture/external-service-simulation.md` for complete explanation
+
+**Documentation Convention:**
+- **Business/Narrative:** "ProductInfo service" (what it represents)
+- **Technical/Code:** "globex-mobile-gateway" (actual deployment name)
 
 ## File Structure
 
@@ -72,18 +202,26 @@ kustomize/
 ├── rhbk/               # RHBK 26 operator + Keycloak CR + realm
 └── apicurio/           # Apicurio Studio (schema registry)
 
-solutions/              # Optional tutorial resources (NOT in base GitOps)
-├── README.md           # Solutions documentation
-└── platform-engineer/  # Platform Engineer tutorial (DNSPolicy)
+solutions/                        # Optional tutorial resources (NOT in base GitOps)
+├── README.md                     # Solutions documentation
+├── platform-engineer-workflow/   # Platform Engineer tutorial (DNSPolicy, RateLimitPolicy)
+│   ├── kustomization.yaml
+│   ├── ingress-gateway-dnspolicy-prod-web.yaml
+│   └── echo-api-ratelimitpolicy-echo-api.yaml
+└── developer-workflow/           # Developer tutorial (HTTPRoute + AuthPolicy + RateLimitPolicy)
     ├── kustomization.yaml
-    └── ingress-gateway-dnspolicy-prod-web.yaml
+    ├── globex-apim-user1-httproute-globex-mobile-gateway.yaml
+    ├── globex-apim-user1-authpolicy-globex-mobile-gateway.yaml
+    ├── globex-apim-user1-ratelimitpolicy-globex-mobile-gateway.yaml
+    └── README.md
 
 argocd/
-├── application.yaml                            # Bootstrap application (default overlay)
-├── application-globex.yaml                     # Globex application
-├── application-rhbk.yaml                       # RHBK stack
-├── application-apicurio.yaml                   # Apicurio Studio
-└── application-solutions-platform-engineer.yaml # Optional: Platform Engineer tutorial (GitOps)
+├── application.yaml                                      # Bootstrap application (default overlay)
+├── application-globex.yaml                               # Globex application
+├── application-rhbk.yaml                                 # RHBK stack
+├── application-apicurio.yaml                             # Apicurio Studio
+├── application-solutions-platform-engineer-workflow.yaml # Optional: Platform Engineer tutorial (GitOps)
+└── application-solutions-developer-workflow.yaml         # Optional: Developer tutorial (GitOps)
 
 scripts/
 ├── deploy.sh           # Deploy base infrastructure
@@ -104,23 +242,44 @@ The `solutions/` directory contains **optional resources** for following the [Re
 - **Independently managed** - Deploy/remove without affecting base infrastructure
 
 **Available Solutions**:
-- **platform-engineer**: DNSPolicy for automated Route53 DNS management
+- **platform-engineer-workflow**: DNSPolicy + RateLimitPolicy for Platform Engineer persona
   - Tutorial: https://www.solutionpatterns.io/soln-pattern-connectivity-link/solution-pattern/03.1-platform.html
-  - Deploys: DNSPolicy targeting Gateway `prod-web`
+  - Deploys: DNSPolicy targeting Gateway `prod-web`, RateLimitPolicy for echo-api HTTPRoute
+- **developer-workflow**: HTTPRoute + AuthPolicy + RateLimitPolicy for ProductInfo API (Application Developer persona)
+  - Tutorial: Gateway API HTTPRoute demonstration with HTTP 404/403/401 error progression
+  - Deploys:
+    - HTTPRoute for globex-mobile-gateway with path-based routing (`/mobile/services/category/list`, `/mobile/services/product/category/*`)
+    - AuthPolicy with Keycloak JWT authentication
+    - RateLimitPolicy (100 requests per 10s per user)
+  - **Prerequisites**:
+    - `GLOBEX_MOBILE_GATEWAY` must be set to Gateway API URL (not Route URL)
+    - OAuth login must work (RHBK 26 compatible image + Keycloak CORS configured)
+  - **Testing Progression** (demonstrates Gateway API security layers):
+    1. **HTTP 404** (no HTTPRoute): Click "Categories" → Red banner "Not Found"
+    2. **HTTP 401** (HTTPRoute + AuthPolicy deployed): Click "Categories" → "Unauthorized"
+    3. **HTTP 200** (after login): Login → Click "Categories" → Products load successfully
+  - **Full Deployment** (HTTPRoute + AuthPolicy together):
+    ```bash
+    ./scripts/solutions.sh deploy developer-workflow
+    # Deploys both HTTPRoute and AuthPolicy via kustomize
+    ```
 
 **Usage**:
 ```bash
 # List available solutions
 ./scripts/solutions.sh list
 
-# Deploy platform-engineer tutorial resources
-./scripts/solutions.sh deploy platform-engineer
+# Deploy platform-engineer-workflow tutorial resources
+./scripts/solutions.sh deploy platform-engineer-workflow
+
+# Deploy developer-workflow tutorial resources
+./scripts/solutions.sh deploy developer-workflow
 
 # Check status
-./scripts/solutions.sh status platform-engineer
+./scripts/solutions.sh status platform-engineer-workflow
 
 # Remove resources
-./scripts/solutions.sh delete platform-engineer
+./scripts/solutions.sh delete developer-workflow
 ```
 
 **See**: `solutions/README.md` for detailed documentation
@@ -181,8 +340,39 @@ oc get route -n apicurio
 ### RHBK 26 Compatibility
 - **Requires**: OAuth 2.0 Authorization Code Flow + PKCE
 - **Removed**: Implicit Flow (deprecated in RHBK 26)
-- **Custom images**: globex-mobile with Code Flow implementation
+- **Custom images**: globex-mobile with Code Flow implementation (v3)
 - **Details**: `docs/deployment/rhbk-26-compatibility.md`
+
+**Critical Keycloak Configuration (`keycloak-keycloakrealmimport-globex-user1.yaml`):**
+- `webOrigins`: Must include frontend URL + "+" for CORS
+  ```yaml
+  webOrigins:
+    - "https://globex-mobile-globex-apim-user1.apps.myocp.sandbox3491.opentlc.com"
+    - "+"  # Allows origins from redirectUris
+  ```
+- `optionalClientScopes`: Must NOT include `offline_access` (causes token exchange errors)
+  ```yaml
+  optionalClientScopes:
+    - address
+    - phone
+    - microprofile-jwt
+    # offline_access REMOVED - frontend v3 doesn't request it
+  ```
+- `pkce.code.challenge.method`: Must be `S256` in client attributes
+
+**Critical globex-mobile Deployment Configuration:**
+- **Image**: Must use `rhbk26-authcode-flow-v3` (both init and main container)
+- **GLOBEX_MOBILE_GATEWAY**:
+  - For developer-workflow demo (HTTP 404): `https://globex-mobile.globex.sandbox3491.opentlc.com` (Gateway API URL)
+  - For production: `https://globex-mobile-gateway-globex-apim-user1.apps.myocp.sandbox3491.opentlc.com` (Route URL)
+- **Init container SSO_AUTHORITY**: PostSync Job patches this, but verify it's not "placeholder"
+  ```bash
+  oc get deployment globex-mobile -n globex-apim-user1 \
+    -o jsonpath='{.spec.template.spec.initContainers[0].env[0].value}'
+  # Should return: https://keycloak-keycloak.apps.myocp.sandbox3491.opentlc.com/realms/globex-user1
+  # NOT: placeholder
+  ```
+- **Browser cache**: After Keycloak configuration changes, test in incognito/private window to avoid CORS cache issues
 
 ### Globex Architecture
 - **Pattern**: Monolith (NOT microservices)
