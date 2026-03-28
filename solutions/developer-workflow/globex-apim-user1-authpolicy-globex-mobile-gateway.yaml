@@ -16,7 +16,7 @@ spec:
     authentication:
       "keycloak-users":
         jwt:
-          issuerUrl: https://keycloak-keycloak.apps.myocp.sandbox3491.opentlc.com/realms/globex-user1
+          issuerUrl: https://keycloak-keycloak.CLUSTER_DOMAIN/realms/globex-user1
     response:
       success:
         filters:

@@ -25,19 +25,19 @@ spec:
               echo "Gateway prod-web Hostname Patch"
               echo "========================================"
 
-              # Get cluster domain and calculate root domain (matches ansible)
+              # Get cluster domain and calculate root domain
               echo ""
               echo "[1/2] Getting cluster domain..."
               BASE_DOMAIN=$(oc get dns cluster -o jsonpath='{.spec.baseDomain}')
-              ROOT_DOMAIN=$(echo "${BASE_DOMAIN}" | sed 's/^[^.]*\.//')
+              ROOT_DOMAIN=$(echo "${BASE_DOMAIN}" | sed 's/^apps\.//')
               GATEWAY_HOSTNAME="*.globex.${ROOT_DOMAIN}"
 
               echo "✓ Cluster base domain: ${BASE_DOMAIN}"
               echo "✓ Root domain: ${ROOT_DOMAIN}"
               echo "✓ Target hostname: ${GATEWAY_HOSTNAME}"
-              echo "✓ Pattern: Wildcard hostname (using root domain like ansible)"
+              echo "✓ Replacing placeholder: ROOT_DOMAIN → ${ROOT_DOMAIN}"
 
-              # Patch Gateway hostname
+              # Patch Gateway hostname (replaces ROOT_DOMAIN placeholder)
               echo ""
               echo "[2/2] Patching Gateway hostname..."
 

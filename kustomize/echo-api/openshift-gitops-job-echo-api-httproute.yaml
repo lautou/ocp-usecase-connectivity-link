@@ -33,16 +33,17 @@ spec:
               echo "=========================================="
               echo ""
 
-              # Get cluster domain and calculate root domain (matches ingress-gateway pattern)
+              # Get cluster domain and calculate root domain
               BASE_DOMAIN=$(oc get dns cluster -o jsonpath='{.spec.baseDomain}')
-              ROOT_DOMAIN=$(echo "${BASE_DOMAIN}" | sed 's/^[^.]*\.//')
+              ROOT_DOMAIN=$(echo "${BASE_DOMAIN}" | sed 's/^apps\.//')
               HOSTNAME="echo.globex.${ROOT_DOMAIN}"
 
               echo "Cluster base domain: ${BASE_DOMAIN}"
               echo "Root domain: ${ROOT_DOMAIN}"
               echo "Target hostname: ${HOSTNAME}"
+              echo "Replacing placeholder: ROOT_DOMAIN → ${ROOT_DOMAIN}"
 
-              # Patch HTTPRoute hostname
+              # Patch HTTPRoute hostname (replaces ROOT_DOMAIN placeholder)
               echo "Patching HTTPRoute echo-api hostname..."
               oc patch httproute echo-api -n echo-api --type=json -p="[
                 {\"op\": \"replace\", \"path\": \"/spec/hostnames/0\", \"value\": \"${HOSTNAME}\"}

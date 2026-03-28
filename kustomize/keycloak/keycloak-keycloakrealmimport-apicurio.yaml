@@ -36,10 +36,10 @@ spec:
         clientAuthenticatorType: "none"
         standardFlowEnabled: true
         directAccessGrantsEnabled: true
-        rootUrl: https://apicurio-studio-ui-apicurio.placeholder
+        rootUrl: https://apicurio-studio-ui-apicurio.CLUSTER_DOMAIN
         redirectUris:
-          - https://apicurio-studio-ui-apicurio.placeholder/*
-        baseUrl: https://apicurio-studio-ui-apicurio.placeholder
+          - https://apicurio-studio-ui-apicurio.CLUSTER_DOMAIN/*
+        baseUrl: https://apicurio-studio-ui-apicurio.CLUSTER_DOMAIN
         webOrigins:
           - "+"
         attributes:

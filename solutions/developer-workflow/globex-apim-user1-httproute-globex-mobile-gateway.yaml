@@ -15,7 +15,7 @@ spec:
       namespace: ingress-gateway
       name: prod-web
   hostnames:
-    - globex-mobile.globex.sandbox3491.opentlc.com
+    - globex-mobile.globex.ROOT_DOMAIN
   rules:
     - matches:
         - path:

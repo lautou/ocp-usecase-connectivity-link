@@ -35,7 +35,7 @@ spec:
         redirectUris:
           - "*"
         webOrigins:
-          - "https://globex-mobile-globex-apim-user1.apps.myocp.sandbox3491.opentlc.com"
+          - "https://globex-mobile-globex-apim-user1.CLUSTER_DOMAIN"
           - "+"
         notBefore: 0
         bearerOnly: false

@@ -8,7 +8,7 @@ metadata:
     app.kubernetes.io/part-of: connectivity-link
 spec:
   hostnames:
-    - echo.globex.placeholder
+    - echo.globex.ROOT_DOMAIN
   parentRefs:
     - group: gateway.networking.k8s.io
       kind: Gateway
