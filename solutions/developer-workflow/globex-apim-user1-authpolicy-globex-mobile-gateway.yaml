@@ -1,0 +1,27 @@
+apiVersion: kuadrant.io/v1
+kind: AuthPolicy
+metadata:
+  name: globex-mobile-gateway
+  namespace: globex-apim-user1
+  labels:
+    app.kubernetes.io/name: globex-mobile-gateway
+    app.kubernetes.io/component: external-api
+    app.kubernetes.io/part-of: globex
+spec:
+  targetRef:
+    group: gateway.networking.k8s.io
+    kind: HTTPRoute
+    name: globex-mobile-gateway
+  rules:
+    authentication:
+      "keycloak-users":
+        jwt:
+          issuerUrl: https://keycloak-keycloak.apps.myocp.sandbox3491.opentlc.com/realms/globex-user1
+    response:
+      success:
+        filters:
+          identity:
+            json:
+              properties:
+                userid:
+                  selector: auth.identity.sub

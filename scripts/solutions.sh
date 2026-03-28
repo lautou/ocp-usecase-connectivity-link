@@ -19,8 +19,8 @@ NC='\033[0m' # No Color
 
 # Available solutions
 AVAILABLE_SOLUTIONS=(
-  "platform-engineer"
-  # "application-developer"  # Future
+  "platform-engineer-workflow"
+  "developer-workflow"
 )
 
 #######################################
@@ -43,20 +43,24 @@ ${YELLOW}COMMANDS:${NC}
   help                Show this help message
 
 ${YELLOW}AVAILABLE SOLUTIONS:${NC}
-  platform-engineer   Platform Engineer tutorial (DNSPolicy)
+  platform-engineer-workflow   Platform Engineer tutorial (DNSPolicy, RateLimitPolicy)
+  developer-workflow           Developer tutorial (HTTPRoute for ProductInfo API)
 
 ${YELLOW}EXAMPLES:${NC}
   # List all available solutions
   $0 list
 
-  # Deploy platform-engineer tutorial resources
-  $0 deploy platform-engineer
+  # Deploy platform-engineer-workflow tutorial resources
+  $0 deploy platform-engineer-workflow
+
+  # Deploy developer-workflow tutorial resources
+  $0 deploy developer-workflow
 
   # Check status
-  $0 status platform-engineer
+  $0 status platform-engineer-workflow
 
   # Remove resources
-  $0 delete platform-engineer
+  $0 delete developer-workflow
 
 ${YELLOW}MORE INFO:${NC}
   Documentation: solutions/README.md
@@ -160,15 +164,15 @@ list_solutions() {
 
     # Show brief description
     case "${solution}" in
-      platform-engineer)
+      platform-engineer-workflow)
         echo -e "    ${BLUE}Platform Engineer Tutorial${NC}"
         echo -e "    Deploys: DNSPolicy + RateLimitPolicy (HTTPRoute-level)"
         echo -e "    Tutorial: https://www.solutionpatterns.io/soln-pattern-connectivity-link/solution-pattern/03.1-platform.html"
         ;;
-      application-developer)
+      developer-workflow)
         echo -e "    ${BLUE}Application Developer Tutorial${NC}"
-        echo -e "    Deploys: HTTPRoute, AuthPolicy, RateLimitPolicy examples"
-        echo -e "    Tutorial: https://www.solutionpatterns.io/soln-pattern-connectivity-link/solution-pattern/03.2-app-developer.html"
+        echo -e "    Deploys: HTTPRoute for ProductInfo API (path-based routing)"
+        echo -e "    Tutorial: Gateway API HTTPRoute demonstration"
         ;;
     esac
     echo ""
@@ -203,7 +207,7 @@ deploy_solution() {
 
   # Show next steps based on solution
   case "${solution}" in
-    platform-engineer)
+    platform-engineer-workflow)
       echo -e "${BLUE}Next Steps:${NC}"
       echo ""
       echo "1. Wait for DNSPolicy to be enforced:"
@@ -227,6 +231,29 @@ deploy_solution() {
       echo -e "${YELLOW}Note:${NC} HTTPRoute RateLimitPolicy (10 req/12s) overrides Gateway policy (5 req/10s)"
       echo ""
       echo "Tutorial: https://www.solutionpatterns.io/soln-pattern-connectivity-link/solution-pattern/03.1-platform.html"
+      ;;
+    developer-workflow)
+      echo -e "${BLUE}Next Steps:${NC}"
+      echo ""
+      echo "1. Check HTTPRoute created and attached to Gateway:"
+      echo "   oc get httproute globex-mobile-gateway -n globex-apim-user1"
+      echo ""
+      echo "2. Verify HTTPRoute status:"
+      echo "   oc describe httproute globex-mobile-gateway -n globex-apim-user1"
+      echo ""
+      CLUSTER_DOMAIN=$(oc get dns cluster -o jsonpath='{.spec.baseDomain}' 2>/dev/null || echo "<cluster-domain>")
+      ROOT_DOMAIN=$(echo "${CLUSTER_DOMAIN}" | sed 's/^[^.]*\.//')
+      echo "3. Test ProductInfo API endpoint (expect HTTP 403):"
+      echo "   curl -k https://globex-mobile.globex.${ROOT_DOMAIN}/mobile/services/category/list"
+      echo "   Expected: HTTP 403 Forbidden (AuthPolicy deny-by-default)"
+      echo ""
+      echo "4. Test product category endpoint:"
+      echo "   curl -k https://globex-mobile.globex.${ROOT_DOMAIN}/mobile/services/product/category/"
+      echo "   Expected: HTTP 403 Forbidden"
+      echo ""
+      echo -e "${YELLOW}Note:${NC} Gateway has deny-by-default AuthPolicy. Next step: add AuthPolicy for this HTTPRoute."
+      echo ""
+      echo "See: solutions/developer-workflow/README.md for next tutorial steps"
       ;;
   esac
 }
@@ -261,7 +288,7 @@ delete_solution() {
 
   # Show verification steps
   case "${solution}" in
-    platform-engineer)
+    platform-engineer-workflow)
       echo -e "${BLUE}Verification:${NC}"
       echo ""
       echo "1. Check DNSPolicy removed:"
@@ -282,6 +309,23 @@ delete_solution() {
       echo ""
       echo "Note: DNS records in Route53 may take a few minutes to be cleaned up."
       ;;
+    developer-workflow)
+      echo -e "${BLUE}Verification:${NC}"
+      echo ""
+      echo "1. Check HTTPRoute removed:"
+      echo "   oc get httproute globex-mobile-gateway -n globex-apim-user1"
+      echo "   Expected: No resources found"
+      echo ""
+      echo "2. Verify API endpoint no longer accessible via Gateway:"
+      CLUSTER_DOMAIN=$(oc get dns cluster -o jsonpath='{.spec.baseDomain}' 2>/dev/null || echo "<cluster-domain>")
+      ROOT_DOMAIN=$(echo "${CLUSTER_DOMAIN}" | sed 's/^[^.]*\.//')
+      echo "   curl -k https://globex-mobile.globex.${ROOT_DOMAIN}/mobile/services/category/list"
+      echo "   Expected: HTTP 404 Not Found (no route)"
+      echo ""
+      echo "3. Verify frontend still accessible via Route:"
+      echo "   curl -k https://globex-mobile-globex-apim-user1.apps.${CLUSTER_DOMAIN}/"
+      echo "   Expected: HTTP 200 OK (frontend unchanged)"
+      ;;
   esac
 }
 
@@ -299,7 +343,7 @@ status_solution() {
   local label="solution-pattern.kuadrant.io/tutorial=${solution}"
 
   case "${solution}" in
-    platform-engineer)
+    platform-engineer-workflow)
       echo -e "${BLUE}=== DNSPolicy ===${NC}"
       if oc get dnspolicy prod-web-dnspolicy -n ingress-gateway &> /dev/null; then
         oc get dnspolicy prod-web-dnspolicy -n ingress-gateway
@@ -338,6 +382,42 @@ status_solution() {
       ROOT_DOMAIN=$(echo "${CLUSTER_DOMAIN}" | sed 's/^[^.]*\.//')
       echo "Testing: echo.globex.${ROOT_DOMAIN}"
       dig +short "echo.globex.${ROOT_DOMAIN}" || warning "DNS not resolving"
+      echo ""
+      ;;
+    developer-workflow)
+      echo -e "${BLUE}=== HTTPRoute ===${NC}"
+      if oc get httproute globex-mobile-gateway -n globex-apim-user1 &> /dev/null; then
+        oc get httproute globex-mobile-gateway -n globex-apim-user1
+        echo ""
+        echo -e "${BLUE}Status:${NC}"
+        oc get httproute globex-mobile-gateway -n globex-apim-user1 -o jsonpath='{.status.parents[0].conditions}' | jq '.'
+        echo ""
+        echo -e "${BLUE}Attached to Gateway:${NC}"
+        oc get httproute globex-mobile-gateway -n globex-apim-user1 -o jsonpath='{.status.parents[0].parentRef.name}'
+        echo ""
+      else
+        warning "HTTPRoute not deployed"
+      fi
+      echo ""
+
+      echo -e "${BLUE}=== API Endpoint Test ===${NC}"
+      CLUSTER_DOMAIN=$(oc get dns cluster -o jsonpath='{.spec.baseDomain}' 2>/dev/null)
+      ROOT_DOMAIN=$(echo "${CLUSTER_DOMAIN}" | sed 's/^[^.]*\.//')
+      echo "Testing: https://globex-mobile.globex.${ROOT_DOMAIN}/mobile/services/category/list"
+      HTTP_CODE=$(curl -k -s -o /dev/null -w "%{http_code}" "https://globex-mobile.globex.${ROOT_DOMAIN}/mobile/services/category/list" 2>/dev/null || echo "000")
+      if [[ "${HTTP_CODE}" == "403" ]]; then
+        success "Endpoint accessible (HTTP 403 - expected, AuthPolicy deny-by-default)"
+      elif [[ "${HTTP_CODE}" == "404" ]]; then
+        warning "HTTP 404 - HTTPRoute not working or not attached to Gateway"
+      else
+        echo "HTTP ${HTTP_CODE}"
+      fi
+      echo ""
+
+      echo -e "${BLUE}=== Path Matching ===${NC}"
+      echo "Configured paths:"
+      echo "  • GET /mobile/services/product/category/*"
+      echo "  • GET /mobile/services/category/list"
       echo ""
       ;;
   esac

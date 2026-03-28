@@ -1,12 +1,12 @@
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
-  name: solutions-platform-engineer
+  name: solutions-developer-workflow
   namespace: openshift-gitops
   labels:
-    app.kubernetes.io/name: solutions-platform-engineer
+    app.kubernetes.io/name: solutions-developer-workflow
     app.kubernetes.io/part-of: solution-patterns-connectivity-link
-    solution-pattern.kuadrant.io/tutorial: platform-engineer
+    solution-pattern.kuadrant.io/tutorial: developer-workflow
   annotations:
     argocd.argoproj.io/sync-wave: "100"  # Deploy after base infrastructure
 spec:
@@ -14,10 +14,10 @@ spec:
   source:
     repoURL: https://github.com/lautou/ocp-usecase-connectivity-link.git
     targetRevision: main
-    path: solutions/platform-engineer
+    path: solutions/developer-workflow
   destination:
     server: https://kubernetes.default.svc
-    namespace: ingress-gateway
+    namespace: globex-apim-user1
   syncPolicy:
     automated:
       prune: true

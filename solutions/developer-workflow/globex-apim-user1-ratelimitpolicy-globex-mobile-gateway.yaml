@@ -1,0 +1,21 @@
+apiVersion: kuadrant.io/v1
+kind: RateLimitPolicy
+metadata:
+  name: globex-mobile-gateway
+  namespace: globex-apim-user1
+  labels:
+    app.kubernetes.io/name: globex-mobile-gateway
+    app.kubernetes.io/component: external-api
+    app.kubernetes.io/part-of: globex
+spec:
+  targetRef:
+    group: gateway.networking.k8s.io
+    kind: HTTPRoute
+    name: globex-mobile-gateway
+  limits:
+    "per-user":
+      rates:
+        - limit: 100
+          window: 10s
+      counters:
+        - expression: auth.identity.userid

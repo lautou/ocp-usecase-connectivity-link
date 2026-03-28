@@ -1,0 +1,26 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: solutions-platform-engineer-workflow
+  namespace: openshift-gitops
+  labels:
+    app.kubernetes.io/name: solutions-platform-engineer-workflow
+    app.kubernetes.io/part-of: solution-patterns-connectivity-link
+    solution-pattern.kuadrant.io/tutorial: platform-engineer-workflow
+  annotations:
+    argocd.argoproj.io/sync-wave: "100"  # Deploy after base infrastructure
+spec:
+  project: solution-patterns-connectivity-link
+  source:
+    repoURL: https://github.com/lautou/ocp-usecase-connectivity-link.git
+    targetRevision: main
+    path: solutions/platform-engineer-workflow
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: ingress-gateway
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=false  # Namespace already exists

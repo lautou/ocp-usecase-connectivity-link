@@ -35,7 +35,8 @@ spec:
         redirectUris:
           - "*"
         webOrigins:
-          - "*"
+          - "https://globex-mobile-globex-apim-user1.apps.myocp.sandbox3491.opentlc.com"
+          - "+"
         notBefore: 0
         bearerOnly: false
         consentRequired: false
@@ -73,7 +74,6 @@ spec:
         optionalClientScopes:
           - address
           - phone
-          - offline_access
           - microprofile-jwt
       - clientId: globex-mobile-gateway
         name: globex-mobile-gateway

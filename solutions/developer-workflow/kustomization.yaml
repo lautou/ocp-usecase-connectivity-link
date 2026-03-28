@@ -1,0 +1,13 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: globex-apim-user1
+
+resources:
+  - globex-apim-user1-httproute-globex-mobile-gateway.yaml
+  - globex-apim-user1-authpolicy-globex-mobile-gateway.yaml
+  - globex-apim-user1-ratelimitpolicy-globex-mobile-gateway.yaml
+
+commonLabels:
+  solution-pattern.kuadrant.io/tutorial: developer-workflow
+  solution-pattern.kuadrant.io/persona: application-developer

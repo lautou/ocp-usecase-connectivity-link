@@ -16,12 +16,15 @@ These resources are:
 
 ```
 solutions/
-├── README.md                    # This file
-├── platform-engineer/           # Platform Engineer persona tutorial
+├── README.md                         # This file
+├── platform-engineer-workflow/       # Platform Engineer persona tutorial
 │   ├── kustomization.yaml
-│   └── ingress-gateway-dnspolicy-prod-web.yaml
-└── application-developer/       # Application Developer persona (future)
-    └── ...
+│   ├── ingress-gateway-dnspolicy-prod-web.yaml
+│   └── echo-api-ratelimitpolicy-echo-api.yaml
+└── developer-workflow/               # Application Developer persona tutorial
+    ├── kustomization.yaml
+    ├── globex-apim-user1-httproute-globex-mobile-gateway.yaml
+    └── README.md
 ```
 
 ## Prerequisites
@@ -49,14 +52,17 @@ Before deploying solution pattern resources, ensure:
 ### Option 1: Using the solutions.sh script (Recommended)
 
 ```bash
-# Deploy platform-engineer tutorial resources
-./scripts/solutions.sh deploy platform-engineer
+# Deploy platform-engineer-workflow tutorial resources
+./scripts/solutions.sh deploy platform-engineer-workflow
+
+# Deploy developer-workflow tutorial resources
+./scripts/solutions.sh deploy developer-workflow
 
 # Check status
-./scripts/solutions.sh status platform-engineer
+./scripts/solutions.sh status platform-engineer-workflow
 
 # Remove resources
-./scripts/solutions.sh delete platform-engineer
+./scripts/solutions.sh delete developer-workflow
 
 # List available solutions
 ./scripts/solutions.sh list
@@ -65,29 +71,36 @@ Before deploying solution pattern resources, ensure:
 ### Option 2: Using kubectl/oc directly
 
 ```bash
-# Deploy
-oc apply -k solutions/platform-engineer/
+# Deploy platform-engineer-workflow
+oc apply -k solutions/platform-engineer-workflow/
+
+# Deploy developer-workflow
+oc apply -k solutions/developer-workflow/
 
 # Verify
-oc get dnspolicy -n ingress-gateway -l solution-pattern.kuadrant.io/tutorial=platform-engineer
+oc get dnspolicy -n ingress-gateway -l solution-pattern.kuadrant.io/tutorial=platform-engineer-workflow
+oc get httproute -n globex-apim-user1 -l solution-pattern.kuadrant.io/tutorial=developer-workflow
 
 # Remove
-oc delete -k solutions/platform-engineer/
+oc delete -k solutions/platform-engineer-workflow/
+oc delete -k solutions/developer-workflow/
 ```
 
 ### Option 3: Using ArgoCD (GitOps)
 
 ```bash
-# Create ArgoCD Application
-oc apply -f argocd/application-solutions-platform-engineer.yaml
+# Create ArgoCD Applications
+oc apply -f argocd/application-solutions-platform-engineer-workflow.yaml
+oc apply -f argocd/application-solutions-developer-workflow.yaml
 
 # Sync
-argocd app sync solutions-platform-engineer
+argocd app sync solutions-platform-engineer-workflow
+argocd app sync solutions-developer-workflow
 ```
 
 ## Available Solutions
 
-### 1. Platform Engineer Tutorial
+### 1. Platform Engineer Workflow
 
 **Tutorial URL**: https://www.solutionpatterns.io/soln-pattern-connectivity-link/solution-pattern/03.1-platform.html
 
@@ -107,6 +120,11 @@ Route53 Record: *.globex.<cluster-domain> → Load Balancer CNAME
 - Wildcard DNS record `*.globex.<cluster-domain>` created in Route53
 - HTTPRoutes automatically get DNS records
 - Rate limiting: 10 req/12s for echo-api (HTTPRoute policy overrides Gateway policy of 5 req/10s)
+
+**Deployment**:
+```bash
+./scripts/solutions.sh deploy platform-engineer-workflow
+```
 
 **Verification**:
 ```bash
@@ -130,11 +148,48 @@ done
 # Expected: 10× 200 (allowed), then 2× 429 (rate limited)
 ```
 
-### 2. Application Developer Tutorial (Future)
+### 2. Developer Workflow
 
-**Tutorial URL**: https://www.solutionpatterns.io/soln-pattern-connectivity-link/solution-pattern/03.2-app-developer.html
+**Tutorial**: Gateway API HTTPRoute demonstration for ProductInfo service
 
-**Status**: Not yet implemented
+**What it deploys**:
+- HTTPRoute for ProductInfo API (globex-mobile-gateway) with path-based routing
+- Demonstrates application developer workflow: exposing backend services via Gateway API
+
+**Resources created**:
+```yaml
+HTTPRoute: globex-apim-user1/globex-mobile-gateway
+  Hostname: globex-mobile.globex.<cluster-domain>
+  Paths:
+    - GET /mobile/services/product/category/*
+    - GET /mobile/services/category/list
+```
+
+**Expected behavior**:
+- ProductInfo API endpoints accessible via Gateway API
+- Returns HTTP 403 (AuthPolicy deny-by-default) - add AuthPolicy in next tutorial step
+- Frontend UI remains on OpenShift Route (unchanged)
+- Frontend internal communication still uses ClusterIP (unchanged)
+
+**Deployment**:
+```bash
+./scripts/solutions.sh deploy developer-workflow
+```
+
+**Verification**:
+```bash
+# Check HTTPRoute created
+oc get httproute globex-mobile-gateway -n globex-apim-user1
+
+# Check HTTPRoute attached to Gateway
+oc describe httproute globex-mobile-gateway -n globex-apim-user1
+
+# Test API endpoint (expect 403)
+curl -k https://globex-mobile.globex.<cluster-domain>/mobile/services/category/list
+# Expected: HTTP 403 Forbidden (AuthPolicy deny-by-default)
+```
+
+**See**: `solutions/developer-workflow/README.md` for next tutorial steps
 
 ## Base vs Solutions - What's Included Where?
 
@@ -149,12 +204,17 @@ Production-ready infrastructure:
 - ❌ DNSPolicy (optional - in solutions/)
 - ❌ HTTPRoute-level RateLimitPolicy (optional - in solutions/)
 
-### Solutions Deployment (`solutions/platform-engineer/`)
+### Solutions Deployment
 
 Tutorial-specific additions:
+
+**Platform Engineer Workflow** (`solutions/platform-engineer-workflow/`):
 - ✅ DNSPolicy (automated DNS via Route53)
 - ✅ RateLimitPolicy for echo-api HTTPRoute (10 req/12s, overrides Gateway policy)
-- Future: Additional tutorial resources per persona
+
+**Developer Workflow** (`solutions/developer-workflow/`):
+- ✅ HTTPRoute for ProductInfo API (path-based routing)
+- ✅ Demonstrates Gateway API usage for backend services
 
 ## Why Separate Solutions?
 
@@ -169,14 +229,17 @@ Tutorial-specific additions:
 
 ```bash
 # Using script
-./scripts/solutions.sh delete platform-engineer
+./scripts/solutions.sh delete platform-engineer-workflow
+./scripts/solutions.sh delete developer-workflow
 
 # Or manually
-oc delete -k solutions/platform-engineer/
+oc delete -k solutions/platform-engineer-workflow/
+oc delete -k solutions/developer-workflow/
 ```
 
 ### Verify cleanup
 
+**Platform Engineer Workflow:**
 ```bash
 # Check DNSPolicy removed
 oc get dnspolicy -n ingress-gateway
@@ -188,6 +251,17 @@ oc get dnsrecord.kuadrant.io -n ingress-gateway
 
 # Verify Route53 cleanup (if AWS CLI available)
 # The wildcard CNAME should be removed
+```
+
+**Developer Workflow:**
+```bash
+# Check HTTPRoute removed
+oc get httproute globex-mobile-gateway -n globex-apim-user1
+# Expected: No resources found
+
+# Verify API endpoint no longer accessible
+curl -k https://globex-mobile.globex.<cluster-domain>/mobile/services/category/list
+# Expected: HTTP 404 Not Found
 ```
 
 ## Troubleshooting

@@ -1,0 +1,70 @@
+# Custom Globex Mobile image with OAuth Authorization Code Flow + PKCE (RHBK 26 compatible)
+#
+# This Containerfile patches the official globex-mobile image to:
+# 1. Use Authorization Code Flow instead of Implicit Flow
+# 2. Enable PKCE (required for RHBK 26)
+# 3. Remove offline_access scope request (causes CORS errors when rejected by Keycloak)
+#
+# Build: podman build -f Containerfile.globex-mobile -t quay.io/laurenttourreau/globex-mobile:rhbk26-authcode-flow-v3 .
+# Push:  podman push quay.io/laurenttourreau/globex-mobile:rhbk26-authcode-flow-v3
+
+FROM quay.io/rh_soln_pattern_rhcl/globex-mobile:latest
+
+USER root
+
+# Install required tools for patching
+RUN microdnf install -y findutils sed && \
+    microdnf clean all
+
+# Patch JavaScript files to use Authorization Code Flow with PKCE and remove offline_access scope
+#
+# Changes:
+# 1. response_type: "token" → "code" (Authorization Code Flow)
+# 2. usePkce: false → true (PKCE required for public clients)
+# 3. scope: "...offline_access..." → remove offline_access (causes Keycloak rejection)
+RUN echo "Patching OAuth flow in JavaScript bundle..." && \
+    cd /opt/app-root/src/dist/globex-mobile/browser && \
+    \
+    # Backup original files
+    find . -name "*.js" -exec cp {} {}.backup \; && \
+    \
+    # Pattern 1: Replace response_type:"token" with response_type:"code"
+    find . -name "*.js" -exec sed -i 's/response_type[:"'\'']*token[^"'\'']*"/response_type:"code"/g' {} \; && \
+    \
+    # Pattern 2: Replace response_type:"id_token token" with response_type:"code"
+    find . -name "*.js" -exec sed -i 's/response_type[:"'\'']*id_token[^"'\'']*token[^"'\'']*"/response_type:"code"/g' {} \; && \
+    \
+    # Pattern 3: Replace responseType:"token" with responseType:"code"
+    find . -name "*.js" -exec sed -i 's/responseType[:"'\'']*token[^"'\'']*"/responseType:"code"/g' {} \; && \
+    \
+    # Pattern 4: Replace responseType:"id_token token" with responseType:"code"
+    find . -name "*.js" -exec sed -i 's/responseType[:"'\'']*id_token[^"'\'']*token[^"'\'']*"/responseType:"code"/g' {} \; && \
+    \
+    # Pattern 5: Enable PKCE (usePkce:false → usePkce:true)
+    find . -name "*.js" -exec sed -i 's/usePkce[:"'\'']*false/usePkce:true/g' {} \; && \
+    \
+    # Pattern 6: Enable PKCE (usePkce:!1 → usePkce:!0 in minified code)
+    find . -name "*.js" -exec sed -i 's/usePkce:!1/usePkce:!0/g' {} \; && \
+    \
+    # Pattern 7: Remove offline_access from scope
+    # Common patterns in minified JS:
+    # scope:"openid profile email offline_access" → scope:"openid profile email"
+    # scope:"openid+profile+email+offline_access" → scope:"openid+profile+email"
+    find . -name "*.js" -exec sed -i 's/offline_access[[:space:]]*//g' {} \; && \
+    find . -name "*.js" -exec sed -i 's/+offline_access//g' {} \; && \
+    find . -name "*.js" -exec sed -i 's/offline_access+//g' {} \; && \
+    find . -name "*.js" -exec sed -i 's/%20offline_access//g' {} \; && \
+    find . -name "*.js" -exec sed -i 's/offline_access%20//g' {} \; && \
+    \
+    # Verify the patch
+    echo "Verifying patch - searching for response_type and usePkce:" && \
+    grep -r "response_type\|usePkce" . | head -10 || true && \
+    echo "Verifying offline_access removal:" && \
+    grep -r "offline_access" . | wc -l && \
+    \
+    echo "Patch complete!"
+
+# Switch back to non-root user
+USER 1001
+
+# Keep the original entrypoint and CMD

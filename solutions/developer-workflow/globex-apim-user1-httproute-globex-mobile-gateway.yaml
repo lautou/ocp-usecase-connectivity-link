@@ -1,0 +1,37 @@
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: globex-mobile-gateway
+  namespace: globex-apim-user1
+  labels:
+    deployment: globex-mobile-gateway
+    service: globex-mobile-gateway
+    app.kubernetes.io/name: globex-mobile-gateway
+    app.kubernetes.io/component: external-api
+    app.kubernetes.io/part-of: globex
+spec:
+  parentRefs:
+    - kind: Gateway
+      namespace: ingress-gateway
+      name: prod-web
+  hostnames:
+    - globex-mobile.globex.sandbox3491.opentlc.com
+  rules:
+    - matches:
+        - path:
+            type: PathPrefix
+            value: "/mobile/services/product/category/"
+          method: GET
+      backendRefs:
+        - name: globex-mobile-gateway
+          namespace: globex-apim-user1
+          port: 8080
+    - matches:
+        - path:
+            type: Exact
+            value: "/mobile/services/category/list"
+          method: GET
+      backendRefs:
+        - name: globex-mobile-gateway
+          namespace: globex-apim-user1
+          port: 8080
