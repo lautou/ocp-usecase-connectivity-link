@@ -41,7 +41,7 @@ spec:
               # Patch globex-mobile-gateway deployment
               echo "Patching globex-mobile-gateway deployment..."
               oc patch deployment globex-mobile-gateway -n globex-apim-user1 --type=json -p='[
-                {"op": "replace", "path": "/spec/template/spec/containers/0/env/1/value", "value": "'"${KEYCLOAK_URL}"'"}
+                {"op": "replace", "path": "/spec/template/spec/containers/0/env/2/value", "value": "'"${KEYCLOAK_URL}"'"}
               ]'
 
               echo "Environment variables patched successfully"
