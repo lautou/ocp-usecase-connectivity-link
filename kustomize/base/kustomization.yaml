@@ -6,6 +6,3 @@ resources:
   - cluster-gatewayclass-istio.yaml
   - cluster-clusterrole-gateway-manager.yaml
   - cluster-crb-gateway-manager-openshift-gitops-argocd-application-controller.yaml
-
-  # openshift-gitops namespace resources (Jobs and CronJob)
-  - openshift-gitops-cronjob-patch-monitor.yaml
