@@ -23,8 +23,8 @@ spec:
   proxy:
     headers: xforwarded
   hostname:
-    hostname: placeholder
+    hostname: keycloak-keycloak.CMP_PLACEHOLDER_OCP_APPS_DOMAIN
     strict: false
-    adminUrl: placeholder
+    adminUrl: keycloak-keycloak.CMP_PLACEHOLDER_OCP_APPS_DOMAIN
   ingress:
     enabled: true
