@@ -6,6 +6,8 @@ metadata:
   labels:
     app.kubernetes.io/name: echo-api
     app.kubernetes.io/part-of: connectivity-link
+    service: echo-api
+    deployment: echo-api
 spec:
   hostnames:
     - echo.globex.ROOT_DOMAIN
