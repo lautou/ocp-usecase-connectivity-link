@@ -447,6 +447,49 @@ echo "https://$(oc get route grafana-route -n monitoring -o jsonpath='{.spec.hos
   ```
 - **Browser cache**: After Keycloak configuration changes, test in incognito/private window to avoid CORS cache issues
 
+**Known Issue: Realm 404 After Pod Restart**
+
+**Symptom**: Login button returns 404 error, realm endpoints not accessible
+```bash
+curl -k https://keycloak-keycloak.apps.myocp.sandbox3491.opentlc.com/realms/globex-user1/.well-known/openid-configuration
+# Returns: 404 Not Found
+```
+
+**Root Cause**: Keycloak Infinispan cache doesn't reload realm from PostgreSQL after pod restarts (upstream issue: https://github.com/keycloak/keycloak/issues/36159)
+
+**Verification**:
+```bash
+# Check realm exists in database (data is persistent)
+oc exec -n keycloak $(oc get pod -n keycloak -l app=postgres-db -o name) -- \
+  psql -U keycloak -d keycloak -c "SELECT name FROM realm WHERE name='globex-user1';"
+# Should return: globex-user1
+
+# Check KeycloakRealmImport status
+oc get keycloakrealmimport globex-user1 -n keycloak -o jsonpath='{.status.conditions[?(@.type=="Done")].status}'
+# Should return: True
+```
+
+**Fix**:
+```bash
+# Delete KeycloakRealmImport to force realm reload from database
+oc delete keycloakrealmimport globex-user1 -n keycloak
+
+# ArgoCD auto-recreates it → triggers RHBK operator to reload realm from PostgreSQL
+# Wait 15 seconds, then verify
+curl -k -s https://keycloak-keycloak.apps.myocp.sandbox3491.opentlc.com/realms/globex-user1/.well-known/openid-configuration | jq -r '.issuer'
+# Should return: https://keycloak-keycloak.apps.myocp.sandbox3491.opentlc.com/realms/globex-user1
+```
+
+**Why This Works**:
+- Realm data is **persistent** in PostgreSQL (never lost)
+- KeycloakRealmImport acts as sync trigger between Kubernetes CR and Keycloak runtime
+- Deleting CR → ArgoCD recreates → RHBK operator forces Keycloak to reload from database
+- This is a workaround for Keycloak cache synchronization issue in Kubernetes environments
+
+**Related Issues**:
+- GitHub #36159: Realm not found while exists (Keycloak 26.0.7)
+- GitHub #27975: Realm cache not created in Infinispan after restart
+
 ### Globex Architecture
 - **Pattern**: Monolith (NOT microservices)
 - **Components**: 1 DB + 1 backend API + 1 frontend + 1 mobile gateway
@@ -460,6 +503,7 @@ echo "https://$(oc get route grafana-route -n monitoring -o jsonpath='{.spec.hos
 | Globex pods not ready | `docs/operations/troubleshooting.md#globex-pods-not-ready` |
 | Gateway hostname not patched | `docs/operations/troubleshooting.md#gateway-hostname-not-updated` |
 | RHBK 26 OAuth errors | `docs/deployment/rhbk-26-compatibility.md` |
+| Keycloak realm 404 after pod restart | See "RHBK 26 Compatibility" section (delete KeycloakRealmImport to reload) |
 | Apicurio deployment issues | `docs/deployment/apicurio-deployment.md` |
 | Grafana metrics not showing | See "Monitoring" section above (FIXED - ConfigMap + memory limits) |
 | DNS not resolving | `docs/operations/troubleshooting.md#dns-not-resolving` |
