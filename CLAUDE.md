@@ -38,7 +38,7 @@ spec:
 **CRITICAL SYSTEM**: This project uses ArgoCD Config Management Plugin (CMP) to replace cluster-specific domain placeholders during manifest generation.
 
 **Why CMP:**
-- Git manifests contain domain placeholders (`CLUSTER_DOMAIN`, `ROOT_DOMAIN`)
+- Git manifests contain domain placeholders (`CMP_PLACEHOLDER_ROOT_DOMAIN`, `CMP_PLACEHOLDER_OCP_APPS_DOMAIN`)
 - CMP queries OpenShift DNS API to discover actual cluster domain
 - Replacements happen during manifest generation (before Kubernetes validation)
 - Works with partial sync, auto-sync, and all ArgoCD features
@@ -56,34 +56,39 @@ spec:
 4. **CMP calculates domain values**:
    ```bash
    BASE_DOMAIN="myocp.sandbox3491.opentlc.com"     # From DNS API
-   CLUSTER_DOMAIN="apps.${BASE_DOMAIN}"            # OpenShift routes domain
-   ROOT_DOMAIN=$(echo "${BASE_DOMAIN}" | sed 's/^[^.]*\.//')  # Gateway API domain
+   COMPUTED_OCP_APPS_DOMAIN="apps.${BASE_DOMAIN}"            # OpenShift routes domain
+   COMPUTED_ROOT_DOMAIN=$(echo "${BASE_DOMAIN}" | sed 's/^[^.]*\.//')  # Gateway API domain
    ```
 5. **CMP builds and transforms manifests**:
    ```bash
-   kustomize build . | sed "s|CLUSTER_DOMAIN|${CLUSTER_DOMAIN}|g; s|ROOT_DOMAIN|${ROOT_DOMAIN}|g"
+   kustomize build . | sed \
+     -e "s|CMP_PLACEHOLDER_OCP_APPS_DOMAIN|${COMPUTED_OCP_APPS_DOMAIN}|g" \
+     -e "s|CMP_PLACEHOLDER_ROOT_DOMAIN|${COMPUTED_ROOT_DOMAIN}|g"
    ```
 
 **Domain Placeholder Usage:**
 
-- **CLUSTER_DOMAIN** (`apps.myocp.sandbox3491.opentlc.com`):
+- **CMP_PLACEHOLDER_OCP_APPS_DOMAIN** → `apps.myocp.sandbox3491.opentlc.com`:
   - OpenShift Routes
   - Keycloak URLs
   - All services using OpenShift ingress
+  - Example: `keycloak-keycloak.CMP_PLACEHOLDER_OCP_APPS_DOMAIN`
 
-- **ROOT_DOMAIN** (`sandbox3491.opentlc.com`):
+- **CMP_PLACEHOLDER_ROOT_DOMAIN** → `sandbox3491.opentlc.com`:
   - Gateway API hostnames
   - DNS delegation zone
   - External DNS records
+  - Example: `*.globex.CMP_PLACEHOLDER_ROOT_DOMAIN`
 
 **CMP Configuration:**
 
-Located in `argocd/openshift-gitops-configmap-cmp-plugin.yaml`:
+Managed by DevOps team in `openshift-gitops/cmp-plugin` ConfigMap:
 - **Plugin name**: `cluster-domain-replacer`
 - **Discovery**: Matches repositories with `kustomization.yaml`
-- **Generate**: Runs kustomize + sed replacements
+- **Generate**: Runs kustomize + sed replacements for all `CMP_PLACEHOLDER_*` variables
 - **Authentication**: Uses ServiceAccount token from repo-server pod
 - **RBAC**: ClusterRole `argocd-cmp-dns-reader` grants DNS read permission
+- **Container**: Runs as sidecar `cmp-cluster-domain` in `openshift-gitops-repo-server` pod
 
 **Verification Commands:**
 ```bash
