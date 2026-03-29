@@ -162,6 +162,51 @@ oc auth can-i get dnses.config.openshift.io \
 - **RHBK 26**: Red Hat build of Keycloak in `keycloak` namespace
 - **Apicurio Studio**: Schema registry in `apicurio` namespace
 
+### Monitoring
+- **OpenShift User Workload Monitoring (UWM)**: Enabled cluster-wide for all user projects
+  - Monitors all namespaces by default (implicit `openshift.io/user-monitoring="true"`)
+  - Exclude namespaces with label `openshift.io/user-monitoring="false"`
+  - Separate from platform monitoring (OpenShift cluster components)
+- **kube-state-metrics-kuadrant**: Custom metrics exporter in `monitoring` namespace
+  - Exposes Gateway API + Kuadrant resource metrics to Prometheus
+  - Deployed by `rh-connectivity-link` Application (ocp-open-env-install-tool repo)
+  - ConfigMap: `custom-resource-state` defines CustomResourceStateMetrics configuration
+  - **Fixed (Mar 2026)**: Updated Gateway API versions v1beta1→v1, increased memory 250Mi→512Mi
+  - Monitors: Gateway, GatewayClass, HTTPRoute, GRPCRoute, TLSPolicy, DNSPolicy, RateLimitPolicy, AuthPolicy, DNSRecord, DNSHealthCheckProbe
+- **Grafana**: App Developer Dashboard shows HTTPRoute metrics (request rates, latency, errors by code)
+  - Access: OpenShift Console → Observe → Dashboards → monitoring/App Developer Dashboard
+  - Data source: thanos-querier-ds (User Workload Monitoring Prometheus)
+  - Metrics: `gatewayapi_httproute_*` (parent_info, status_parent_info, created, deleted, hostname_info, labels)
+
+**Verification**:
+```bash
+# Check kube-state-metrics-kuadrant pod
+oc get pods -n monitoring -l app.kubernetes.io/name=kube-state-metrics-kuadrant
+# Should show: 1/1 Running
+
+# Check Prometheus targets
+THANOS_URL=$(oc get route thanos-querier -n openshift-monitoring -o jsonpath='{.spec.host}')
+TOKEN=$(oc whoami -t)
+curl -k -s -H "Authorization: Bearer ${TOKEN}" \
+  "https://${THANOS_URL}/api/v1/targets" | \
+  jq -r '.data.activeTargets[] | select(.labels.service=="kube-state-metrics-kuadrant") | {job, health, lastError}'
+# Should show: health: "up"
+
+# Query HTTPRoute metrics
+curl -k -s -H "Authorization: Bearer ${TOKEN}" \
+  "https://${THANOS_URL}/api/v1/query?query=gatewayapi_httproute_parent_info" | \
+  jq -r '.data.result[] | {name: .metric.name, namespace: .metric.exported_namespace, parent_name: .metric.parent_name}'
+# Should return: echo-api, globex-mobile-gateway, etc.
+```
+
+**Known Issue (FIXED)**: ConfigMap had wrong Gateway API versions causing OOMKilled
+- **Problem**: Upstream Kuadrant gateway-api-state-metrics 0.6.0/0.7.1 uses v1beta1/v1alpha2
+- **Impact**: Pod tried to watch non-existent v1alpha2 resources (TCPRoute, TLSRoute, UDPRoute, BackendTLSPolicy)
+- **Symptom**: kube-state-metrics-kuadrant CrashLoopBackOff (OOMKilled after 17s), Grafana "No data"
+- **Fix**: Updated ConfigMap to v1 for Gateway/GatewayClass/HTTPRoute/GRPCRoute, removed non-existent resources
+- **Resolution**: Pod startup 17s→14s, Prometheus scraping successful, Grafana shows metrics
+- **Managed by**: DevOps team in ocp-open-env-install-tool repo (rh-connectivity-link Application)
+
 ### Custom Images (Bug Fixes)
 - `quay.io/laurenttourreau/globex-store:npe-fixed` - Fixes NullPointerException in CatalogResource.java
 - `quay.io/laurenttourreau/globex-mobile:rhbk26-authcode-flow-v3` - RHBK 26 OAuth Code Flow + PKCE + No offline_access scope
@@ -336,6 +381,13 @@ oc get deployment -n keycloak
 # Apicurio Studio
 oc get apicurioregistry3 -n apicurio
 oc get route -n apicurio
+
+# Monitoring / Observability
+oc get pods -n monitoring -l app.kubernetes.io/name=kube-state-metrics-kuadrant
+# Should show: 1/1 Running
+
+# Grafana dashboard (view in browser)
+echo "https://$(oc get route grafana-route -n monitoring -o jsonpath='{.spec.host}')/d/I_sd1Y4=lk/app-developer-dashboard"
 ```
 
 ## Critical Architecture Decisions
@@ -409,6 +461,7 @@ oc get route -n apicurio
 | Gateway hostname not patched | `docs/operations/troubleshooting.md#gateway-hostname-not-updated` |
 | RHBK 26 OAuth errors | `docs/deployment/rhbk-26-compatibility.md` |
 | Apicurio deployment issues | `docs/deployment/apicurio-deployment.md` |
+| Grafana metrics not showing | See "Monitoring" section above (FIXED - ConfigMap + memory limits) |
 | DNS not resolving | `docs/operations/troubleshooting.md#dns-not-resolving` |
 | Certificate issues | `docs/operations/troubleshooting.md#tls-certificate-issues` |
 
