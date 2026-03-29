@@ -38,7 +38,7 @@ spec:
               echo "Placeholder domains replaced with ${APPS_DOMAIN}"
           env:
             - name: SSO_AUTHORITY
-              value: https://keycloak-keycloak.CLUSTER_DOMAIN/realms/globex-user1
+              value: https://keycloak-keycloak.CMP_PLACEHOLDER_OCP_APPS_DOMAIN/realms/globex-user1
           volumeMounts:
             - name: app-files
               mountPath: /app-files
@@ -81,13 +81,13 @@ spec:
             - name: PORT
               value: "8080"
             - name: GLOBEX_MOBILE_GATEWAY
-              value: https://globex-mobile.globex.ROOT_DOMAIN
+              value: https://globex-mobile.globex.CMP_PLACEHOLDER_ROOT_DOMAIN
             - name: API_CLIENT_ID
               value: globex-mobile  # OAuth client ID - DO NOT CHANGE
             - name: SSO_AUTHORITY
-              value: https://keycloak-keycloak.CLUSTER_DOMAIN/realms/globex-user1
+              value: https://keycloak-keycloak.CMP_PLACEHOLDER_OCP_APPS_DOMAIN/realms/globex-user1
             - name: SSO_REDIRECT_LOGOUT_URI
-              value: https://globex-mobile-globex-apim-user1.CLUSTER_DOMAIN
+              value: https://globex-mobile-globex-apim-user1.CMP_PLACEHOLDER_OCP_APPS_DOMAIN
             - name: SSO_LOG_LEVEL
               value: "2"
           volumeMounts:

@@ -23,11 +23,11 @@ spec:
     # Keycloak authentication
     auth:
       enabled: true
-      authServerUrl: https://keycloak-keycloak.CLUSTER_DOMAIN/realms/apicurio
+      authServerUrl: https://keycloak-keycloak.CMP_PLACEHOLDER_OCP_APPS_DOMAIN/realms/apicurio
       appClientId: apicurio-api
       uiClientId: apicurio-studio
-      redirectUri: https://apicurio-studio-ui-apicurio.CLUSTER_DOMAIN
-      logoutUrl: https://apicurio-studio-ui-apicurio.CLUSTER_DOMAIN
+      redirectUri: https://apicurio-studio-ui-apicurio.CMP_PLACEHOLDER_OCP_APPS_DOMAIN
+      logoutUrl: https://apicurio-studio-ui-apicurio.CMP_PLACEHOLDER_OCP_APPS_DOMAIN
 
       # TLS configuration for Keycloak connection
       tls:
@@ -57,7 +57,7 @@ spec:
     # Ingress for backend API
     ingress:
       enabled: true
-      host: apicurio-studio-api-apicurio.CLUSTER_DOMAIN
+      host: apicurio-studio-api-apicurio.CMP_PLACEHOLDER_OCP_APPS_DOMAIN
 
   # UI component
   ui:
@@ -67,4 +67,4 @@ spec:
     # Ingress for frontend UI
     ingress:
       enabled: true
-      host: apicurio-studio-ui-apicurio.CLUSTER_DOMAIN
+      host: apicurio-studio-ui-apicurio.CMP_PLACEHOLDER_OCP_APPS_DOMAIN

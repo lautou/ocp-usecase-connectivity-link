@@ -58,7 +58,7 @@ spec:
             - name: QUARKUS_REST_CLIENT_GLOBEX_STORE_API_URL
               value: http://globex-store-app:8080
             - name: KEYCLOAK_AUTH_SERVER_URL
-              value: https://keycloak-keycloak.CLUSTER_DOMAIN/realms/globex-user1
+              value: https://keycloak-keycloak.CMP_PLACEHOLDER_OCP_APPS_DOMAIN/realms/globex-user1
             - name: QUARKUS_OIDC_TOKEN_AUDIENCE
               value: globex-mobile
           securityContext:

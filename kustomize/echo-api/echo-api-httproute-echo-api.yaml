@@ -10,7 +10,7 @@ metadata:
     deployment: echo-api
 spec:
   hostnames:
-    - echo.globex.ROOT_DOMAIN
+    - echo.globex.CMP_PLACEHOLDER_ROOT_DOMAIN
   parentRefs:
     - group: gateway.networking.k8s.io
       kind: Gateway

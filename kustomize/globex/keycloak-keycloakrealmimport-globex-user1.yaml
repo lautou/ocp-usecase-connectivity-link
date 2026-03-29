@@ -35,7 +35,7 @@ spec:
         redirectUris:
           - "*"
         webOrigins:
-          - "https://globex-mobile-globex-apim-user1.CLUSTER_DOMAIN"
+          - "https://globex-mobile-globex-apim-user1.CMP_PLACEHOLDER_OCP_APPS_DOMAIN"
           - "+"
         notBefore: 0
         bearerOnly: false

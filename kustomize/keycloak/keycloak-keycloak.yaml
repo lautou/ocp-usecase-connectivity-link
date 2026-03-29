@@ -19,7 +19,7 @@ spec:
       name: postgres-db
       key: POSTGRES_PASSWORD
   hostname:
-    hostname: keycloak-keycloak.CLUSTER_DOMAIN
+    hostname: keycloak-keycloak.CMP_PLACEHOLDER_OCP_APPS_DOMAIN
   http:
     httpEnabled: true
   ingress:
