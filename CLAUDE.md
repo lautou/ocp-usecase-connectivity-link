@@ -290,13 +290,41 @@ argocd/
 └── application-solutions-developer-workflow.yaml         # Optional: Developer tutorial (GitOps)
 
 scripts/
-├── deploy.sh           # Deploy base infrastructure
-├── test-deploy.sh      # Test deployment
-├── cleanup-quay-repos.sh
-└── solutions.sh        # Deploy/manage solution pattern tutorials
+├── setup-lab.sh         # Deploy base infrastructure
+├── setup-solutions.sh   # Deploy/manage solution pattern tutorials
+├── cleanup-lab.sh       # Remove all lab resources
+└── archive/             # Development artifacts
+    ├── test-deploy.sh
+    └── cleanup-quay-repos.sh
 ```
 
 **File naming convention**: `<namespace>-<kind>-<name>.yaml`
+
+## Lab Lifecycle
+
+**Setup base infrastructure:**
+```bash
+./scripts/setup-lab.sh
+```
+
+**Add tutorial solutions (optional):**
+```bash
+./scripts/setup-solutions.sh deploy platform-engineer-workflow
+./scripts/setup-solutions.sh deploy developer-workflow
+```
+
+**Remove all lab resources:**
+```bash
+./scripts/cleanup-lab.sh
+```
+
+**What gets removed:**
+- ArgoCD Applications (bootstrap, globex, rhbk, apicurio, echo-api, ingress-gateway, solutions)
+- Application namespaces (globex-apim-user1, keycloak, apicurio, echo-api, ingress-gateway)
+
+**What is preserved (platform-managed):**
+- GitOps operator (openshift-gitops namespace)
+- Cluster-wide operators (Kuadrant, cert-manager, ACK, RHBK operator, etc.)
 
 ## Solution Patterns (Optional Tutorial Resources)
 
