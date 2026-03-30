@@ -1,7 +1,8 @@
 #!/bin/bash
-# solutions.sh - Deploy/manage Red Hat Connectivity Link solution pattern tutorial resources
+# Setup Red Hat Connectivity Link tutorial solutions
 #
-# This script manages optional tutorial resources that are separate from the base GitOps deployment.
+# This script deploys optional tutorial resources on top of the base lab infrastructure.
+# Prerequisites: Base lab must be deployed first (run ./setup-lab.sh)
 # See solutions/README.md for detailed documentation.
 
 set -e

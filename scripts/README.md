@@ -1,6 +1,6 @@
-# Deployment Scripts
+# Lab Scripts
 
-Automation scripts for deploying Red Hat Connectivity Link to OpenShift clusters.
+Automation scripts for deploying and managing Red Hat Connectivity Link labs on OpenShift clusters.
 
 ## Prerequisites
 
@@ -47,35 +47,12 @@ Automation scripts for deploying Red Hat Connectivity Link to OpenShift clusters
 
 ## Usage
 
-### Test Configuration
+### 1. Setup Base Lab
 
-Validate your configuration without deploying:
-
-```bash
-./scripts/test-deploy.sh
-```
-
-Expected output:
-```
-Test 1: Config file exists... PASS
-Test 2: YAML parsing... PASS
-Test 3: Required configuration... PASS
-Test 4: Auth method validation... PASS
-Test 5: Script syntax... PASS
-
-Configuration summary:
-  Cluster: https://api.mycluster.example.com:6443
-  Auth method: token
-  ArgoCD app: usecase-connectivity-link
-  ...
-```
-
-### Deploy
-
-Run the deployment script:
+Deploy the base infrastructure (WITHOUT tutorial solutions):
 
 ```bash
-./scripts/deploy.sh
+./scripts/setup-lab.sh
 ```
 
 The script will:
@@ -84,9 +61,46 @@ The script will:
 3. ✅ Login to OpenShift cluster
 4. ✅ Validate cluster prerequisites (operators, namespaces)
 5. ❓ Ask for confirmation before deploying
-6. 🚀 Deploy ArgoCD Application
+6. 🚀 Deploy ArgoCD Application (base infrastructure only)
 7. ⏳ Wait for ArgoCD sync (optional)
 8. 📊 Show deployment status and verification commands
+
+### 2. Setup Tutorial Solutions (Optional)
+
+After base lab is deployed, deploy tutorial resources:
+
+```bash
+# List available solutions
+./scripts/setup-solutions.sh list
+
+# Deploy platform-engineer-workflow tutorial
+./scripts/setup-solutions.sh deploy platform-engineer-workflow
+
+# Deploy developer-workflow tutorial
+./scripts/setup-solutions.sh deploy developer-workflow
+
+# Check status
+./scripts/setup-solutions.sh status platform-engineer-workflow
+
+# Remove a solution
+./scripts/setup-solutions.sh delete developer-workflow
+```
+
+### 3. Cleanup Lab
+
+Remove all lab resources (Applications and namespaces):
+
+```bash
+./scripts/cleanup-lab.sh
+```
+
+**What gets removed:**
+- ArgoCD Applications (bootstrap, globex, rhbk, apicurio, solutions)
+- Application namespaces (globex-apim-user1, keycloak, apicurio, echo-api, ingress-gateway)
+
+**What is preserved (platform-managed):**
+- GitOps operator
+- Cluster-wide operators (Kuadrant, cert-manager, ACK, RHBK operator, etc.)
 
 ### Interactive Prompts
 
@@ -255,11 +269,17 @@ The script deploys an ArgoCD Application that manages:
 
 See [README.md](../README.md) for full architecture details.
 
-## Files
+## Scripts
 
-- **deploy.sh** - Main deployment script
-- **test-deploy.sh** - Configuration validation script
+- **setup-lab.sh** - Deploy base lab infrastructure
+- **setup-solutions.sh** - Deploy/manage tutorial solutions
+- **cleanup-lab.sh** - Remove all lab resources
 - **README.md** - This file
+
+### Archive
+
+- **archive/test-deploy.sh** - Configuration validation (development artifact)
+- **archive/cleanup-quay-repos.sh** - Quay.io repository cleanup (development artifact)
 
 ## Related Documentation
 

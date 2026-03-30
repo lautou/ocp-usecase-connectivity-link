@@ -1,6 +1,9 @@
 #!/bin/bash
-# Deploy Red Hat Connectivity Link to OpenShift cluster
-# This script automates the deployment process using configuration from config/cluster.yaml
+# Setup Red Hat Connectivity Link lab on OpenShift cluster
+# This script deploys the base infrastructure (WITHOUT tutorial solutions)
+# Uses configuration from config/cluster.yaml
+#
+# To deploy tutorial solutions after setup, use: ./setup-solutions.sh
 
 set -e  # Exit on error
 
